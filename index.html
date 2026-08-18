@@ -169,22 +169,49 @@
             { appid: 105600, name: "Terraria", playtime_forever: 3300 }
         ];
 
+        // Carga de imágenes optimizada con enlace directo a CDN sin bloqueos CORS
         async function loadGameImages(games) {
             statusEl.textContent = "Cargando portadas de juegos...";
             const imagePromises = games.map(game => {
                 return new Promise((resolve) => {
                     const img = new Image();
-                    img.crossOrigin = "Anonymous";
-                    img.src = `https://corsproxy.io/?https://cdn.cloudflare.steamstatic.com/steam/apps/${game.appid}/header.jpg`;
+                    img.crossOrigin = "anonymous";
+                    
+                    // URL directa de Cloudflare/Akamai CDN de Steam
+                    img.src = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${game.appid}/header.jpg`;
+
                     img.onload = () => resolve({ ...game, img });
-                    img.onerror = () => resolve({ ...game, img: null });
+                    img.onerror = () => {
+                        // Respaldo de URL secundaria si la principal falla
+                        const imgFallback = new Image();
+                        imgFallback.crossOrigin = "anonymous";
+                        imgFallback.src = `https://cdn.cloudflare.steamstatic.com/steam/apps/${game.appid}/header.jpg`;
+                        imgFallback.onload = () => resolve({ ...game, img: imgFallback });
+                        imgFallback.onerror = () => resolve({ ...game, img: null });
+                    };
                 });
             });
 
             return Promise.all(imagePromises);
         }
 
-        // Estilo 1: Grid Limpio (Póster de Colección)
+        function drawCard(game, x, y, w, h) {
+            if (game.img) {
+                ctx.drawImage(game.img, x, y, w, h);
+            } else {
+                // Fondo de tarjeta de respaldo si no hay portada disponible
+                ctx.fillStyle = "#1b2838";
+                ctx.fillRect(x, y, w, h);
+                ctx.fillStyle = "#66c0f4";
+                ctx.font = "bold 13px Segoe UI, sans-serif";
+                ctx.fillText(game.name || `App ${game.appid}`, x + 10, y + h / 2);
+            }
+            ctx.strokeStyle = "#2a475e";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, w, h);
+        }
+
+        // Estilo 1: Grid Limpio
         function renderGrid(games) {
             ctx.fillStyle = "#0e141b";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -194,7 +221,7 @@
             const gap = 20;
 
             const itemWidth = (canvas.width - (padding * 2) - (gap * (cols - 1))) / cols;
-            const itemHeight = itemWidth * 0.46; // Ratio de portada de Steam
+            const itemHeight = itemWidth * 0.46;
 
             games.forEach((game, index) => {
                 const col = index % cols;
@@ -204,17 +231,7 @@
                 const y = padding + row * (itemHeight + gap);
 
                 if (y + itemHeight > canvas.height - padding) return;
-
-                if (game.img) {
-                    ctx.drawImage(game.img, x, y, itemWidth, itemHeight);
-                } else {
-                    ctx.fillStyle = "#1b2838";
-                    ctx.fillRect(x, y, itemWidth, itemHeight);
-                }
-
-                ctx.strokeStyle = "#2a475e";
-                ctx.lineWidth = 2;
-                ctx.strokeRect(x, y, itemWidth, itemHeight);
+                drawCard(game, x, y, itemWidth, itemHeight);
             });
         }
 
@@ -228,19 +245,12 @@
             const padding = 40;
             const gap = 15;
 
-            // Banner Top 1
             const topGame = games[0];
             const heroWidth = canvas.width - (padding * 2);
             const heroHeight = heroWidth * 0.45;
 
-            if (topGame.img) {
-                ctx.drawImage(topGame.img, padding, padding, heroWidth, heroHeight);
-            }
-            ctx.strokeStyle = "#66c0f4";
-            ctx.lineWidth = 4;
-            ctx.strokeRect(padding, padding, heroWidth, heroHeight);
+            drawCard(topGame, padding, padding, heroWidth, heroHeight);
 
-            // Sub-galería
             const subGames = games.slice(1);
             const cols = 4;
             const startY = padding + heroHeight + 30;
@@ -256,17 +266,11 @@
                 const y = startY + row * (itemHeight + gap);
 
                 if (y + itemHeight > canvas.height - padding) return;
-
-                if (game.img) {
-                    ctx.drawImage(game.img, x, y, itemWidth, itemHeight);
-                }
-                ctx.strokeStyle = "#2a475e";
-                ctx.lineWidth = 2;
-                ctx.strokeRect(x, y, itemWidth, itemHeight);
+                drawCard(game, x, y, itemWidth, itemHeight);
             });
         }
 
-        // Estilo 3: Mosaico Proporcional Limpio
+        // Estilo 3: Mosaico Proporcional
         function renderProportional(games) {
             ctx.fillStyle = "#0e141b";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -277,7 +281,7 @@
 
             games.forEach((game) => {
                 const ratio = (game.playtime_forever || 10) / total;
-                const w = Math.max(120, Math.min(maxWidth, Math.sqrt(maxWidth * canvas.height * ratio * 1.5)));
+                const w = Math.max(140, Math.min(maxWidth, Math.sqrt(maxWidth * canvas.height * ratio * 1.5)));
                 const h = w * 0.46;
 
                 if (x + w > canvas.width - 30) {
@@ -287,13 +291,7 @@
 
                 if (y + h > canvas.height - 30) return;
 
-                if (game.img) {
-                    ctx.drawImage(game.img, x, y, w, h);
-                }
-                ctx.strokeStyle = "#2a475e";
-                ctx.lineWidth = 2;
-                ctx.strokeRect(x, y, w, h);
-
+                drawCard(game, x, y, w, h);
                 x += w + 15;
             });
         }
@@ -330,6 +328,8 @@
             }
 
             statusEl.textContent = "Obteniendo datos de Steam...";
+            
+            // Petición directa a la API de Steam
             const endpoint = `https://corsproxy.io/?https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamId}&format=json&include_appinfo=true`;
 
             try {
