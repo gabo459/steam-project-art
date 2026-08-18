@@ -172,10 +172,10 @@
         }
 
         async function loadGameImages(games) {
-            statusEl.textContent = "Cargando portadas...";
+            statusEl.textContent = "Cargando portadas con proxy CORS...";
             const imagePromises = games.map(game => {
                 return new Promise((resolve) => {
-                    // Si el JSON ya trae la imagen en Base64
+                    // Si ya viene procesado en Base64 dentro del JSON
                     if (game.imageBase64) {
                         const img = new Image();
                         img.onload = () => resolve({ ...game, img });
@@ -184,13 +184,22 @@
                         return;
                     }
 
-                    // Si solo trae la AppID, la descarga de la CDN de Steam
+                    // Si viene por AppID, usar proxy CORS para evitar bloqueos del navegador
                     const img = new Image();
                     img.crossOrigin = "anonymous";
-                    img.src = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${game.appid}/header.jpg`;
+                    const steamUrl = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${game.appid}/header.jpg`;
+                    img.src = `https://corsproxy.io/?${encodeURIComponent(steamUrl)}`;
 
                     img.onload = () => resolve({ ...game, img });
-                    img.onerror = () => resolve({ ...game, img: null });
+                    img.onerror = () => {
+                        // Fallback a segunda ruta de CDN con proxy
+                        const imgFallback = new Image();
+                        imgFallback.crossOrigin = "anonymous";
+                        const fallbackUrl = `https://cdn.cloudflare.steamstatic.com/steam/apps/${game.appid}/header.jpg`;
+                        imgFallback.src = `https://corsproxy.io/?${encodeURIComponent(fallbackUrl)}`;
+                        imgFallback.onload = () => resolve({ ...game, img: imgFallback });
+                        imgFallback.onerror = () => resolve({ ...game, img: null });
+                    };
                 });
             });
 
@@ -212,7 +221,6 @@
             ctx.strokeRect(x, y, w, h);
         }
 
-        // Diseños
         function renderGrid(games) {
             ctx.fillStyle = "#0e141b";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -305,13 +313,12 @@
                 if (style === 'grid') renderGrid(loadedGames);
                 else if (style === 'hero') renderHero(loadedGames);
                 else if (style === 'proportional') renderProportional(loadedGames);
-                statusEl.textContent = "¡Póster renderizado!";
+                statusEl.textContent = "¡Póster renderizado con éxito!";
             }, 50);
         }
 
-        // Cargar automáticamente desde steam_games.json al entrar a la web
         async function fetchRepoJSON() {
-            statusEl.textContent = "Buscando steam_games.json en el repositorio...";
+            statusEl.textContent = "Buscando steam_games.json...";
             try {
                 const response = await fetch('./steam_games.json');
                 if (response.ok) {
@@ -327,10 +334,8 @@
             }
         }
 
-        // Al cargar la página
         window.addEventListener('DOMContentLoaded', fetchRepoJSON);
 
-        // Eventos
         document.getElementById('btn-load-repo').addEventListener('click', fetchRepoJSON);
         document.getElementById('style-select').addEventListener('change', generateArt);
 
@@ -364,11 +369,10 @@
             }
         });
 
-        // Guardar JSON listo para subir a GitHub
         document.getElementById('btn-export-json').addEventListener('click', () => {
             if (loadedGames.length === 0) return;
 
-            statusEl.textContent = "Generando JSON...";
+            statusEl.textContent = "Generando JSON con imágenes incrustadas...";
             const cacheData = loadedGames.map(game => ({
                 appid: game.appid,
                 name: game.name,
@@ -383,7 +387,7 @@
             a.download = 'steam_games.json';
             a.click();
             URL.revokeObjectURL(url);
-            statusEl.textContent = "Descargado. Reemplaza el archivo en GitHub con este.";
+            statusEl.textContent = "¡JSON guardado! Súbelo a GitHub para carga instantánea.";
         });
 
         document.getElementById('btn-download').addEventListener('click', () => {
