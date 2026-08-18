@@ -157,52 +157,10 @@
 
         let loadedGames = [];
 
-        // Función con peticiones seguras a través de múltiples proxies CORS
-        async function fetchWithFallback(targetUrl) {
-            const proxies = [
-                `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
-                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
-                `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`
-            ];
-
-            for (const proxyUrl of proxies) {
-                try {
-                    const response = await fetch(proxyUrl);
-                    if (response.ok) {
-                        const text = await response.text();
-                        if (text && text.trim().length > 0) {
-                            return text;
-                        }
-                    }
-                } catch (e) {
-                    console.warn(`Proxy falló: ${proxyUrl}. Intentando siguiente...`);
-                }
-            }
-            throw new Error("No se pudo conectar a través de ningún servidor proxy.");
-        }
-
-        async function fetchImageBlob(appid) {
-            const rawUrl = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`;
-            const proxies = [
-                `https://corsproxy.io/?${encodeURIComponent(rawUrl)}`,
-                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(rawUrl)}`,
-                `https://api.allorigins.win/raw?url=${encodeURIComponent(rawUrl)}`
-            ];
-
-            for (const proxyUrl of proxies) {
-                try {
-                    const response = await fetch(proxyUrl);
-                    if (response.ok) {
-                        const blob = await response.blob();
-                        if (blob.type.startsWith('image/')) {
-                            return URL.createObjectURL(blob);
-                        }
-                    }
-                } catch (err) {
-                    // Siguiente proxy
-                }
-            }
-            return null;
+        // Proxy de imágenes especializado (wsrv.nl) que permite CORS ilimitado para Canvas
+        function getCorsImageUrl(appid) {
+            const rawSteamUrl = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`;
+            return `https://wsrv.nl/?url=${encodeURIComponent(rawSteamUrl)}&output=jpg`;
         }
 
         function imageToBase64(img) {
@@ -215,34 +173,40 @@
                 tempCtx.drawImage(img, 0, 0);
                 return tempCanvas.toDataURL('image/jpeg', 0.85);
             } catch (e) {
+                console.error("Error al convertir a Base64:", e);
                 return null;
             }
         }
 
         async function loadGameImages(games) {
-            statusEl.textContent = "Cargando portadas...";
+            statusEl.textContent = "Cargando portadas de juegos...";
             
-            const imagePromises = games.map(async (game) => {
-                if (game.imageBase64) {
-                    return new Promise((resolve) => {
-                        const img = new Image();
+            const imagePromises = games.map((game) => {
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    img.crossOrigin = "anonymous";
+
+                    // 1. Si el JSON traía la imagen incrustada en Base64
+                    if (game.imageBase64) {
                         img.onload = () => resolve({ ...game, img });
                         img.onerror = () => resolve({ ...game, img: null });
                         img.src = game.imageBase64;
-                    });
-                }
+                        return;
+                    }
 
-                const blobUrl = await fetchImageBlob(game.appid);
-                if (blobUrl) {
-                    return new Promise((resolve) => {
-                        const img = new Image();
-                        img.onload = () => resolve({ ...game, img });
-                        img.onerror = () => resolve({ ...game, img: null });
-                        img.src = blobUrl;
-                    });
-                }
-
-                return { ...game, img: null };
+                    // 2. Carga directa usando CDN CORS de imágenes
+                    img.onload = () => resolve({ ...game, img });
+                    img.onerror = () => {
+                        // Reintento con ruta secundaria
+                        const fallbackImg = new Image();
+                        fallbackImg.crossOrigin = "anonymous";
+                        fallbackImg.onload = () => resolve({ ...game, img: fallbackImg });
+                        fallbackImg.onerror = () => resolve({ ...game, img: null });
+                        fallbackImg.src = `https://wsrv.nl/?url=${encodeURIComponent(`https://cdn.cloudflare.steamstatic.com/steam/apps/${game.appid}/header.jpg`)}`;
+                    };
+                    
+                    img.src = getCorsImageUrl(game.appid);
+                });
             });
 
             return Promise.all(imagePromises);
@@ -363,17 +327,21 @@
             statusEl.textContent = "Buscando steam_games.json...";
             try {
                 const response = await fetch('./steam_games.json');
-                if (response.ok) {
-                    const rawText = await response.text();
-                    const gamesData = JSON.parse(rawText);
-                    loadedGames = await loadGameImages(gamesData);
-                    generateArt();
-                } else {
+                if (!response.ok) {
                     statusEl.textContent = "No se encontró steam_games.json en el repositorio.";
+                    return;
                 }
+                const rawText = await response.text();
+                if (!rawText || rawText.trim() === "") {
+                    statusEl.textContent = "El archivo steam_games.json está vacío.";
+                    return;
+                }
+                const gamesData = JSON.parse(rawText);
+                loadedGames = await loadGameImages(gamesData);
+                generateArt();
             } catch (err) {
                 console.error(err);
-                statusEl.textContent = "Error al leer steam_games.json local.";
+                statusEl.textContent = "Error de formato en steam_games.json.";
             }
         }
 
@@ -391,12 +359,16 @@
                 return;
             }
 
-            statusEl.textContent = "Consultando API de Steam mediante proxies...";
-            const targetUrl = `https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamId}&format=json&include_appinfo=true`;
+            statusEl.textContent = "Consultando API de Steam...";
+            const steamApiUrl = `https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamId}&format=json&include_appinfo=true`;
+            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(steamApiUrl)}`;
 
             try {
-                const rawResponse = await fetchWithFallback(targetUrl);
-                const data = JSON.parse(rawResponse);
+                const response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error("Error en la petición de red");
+                
+                const wrapperData = await response.json();
+                const data = JSON.parse(wrapperData.contents);
                 
                 if (data.response && data.response.games) {
                     const userGames = data.response.games.sort((a, b) => b.playtime_forever - a.playtime_forever);
@@ -408,14 +380,14 @@
                 }
             } catch (err) {
                 console.error(err);
-                statusEl.textContent = "Error de red: Los proxies fallaron en conectar con Steam.";
+                statusEl.textContent = "Error al conectar con la API de Steam.";
             }
         });
 
         document.getElementById('btn-export-json').addEventListener('click', () => {
             if (loadedGames.length === 0) return;
 
-            statusEl.textContent = "Generando JSON listo para GitHub...";
+            statusEl.textContent = "Generando JSON con imágenes en Base64...";
             const cacheData = loadedGames.map(game => ({
                 appid: game.appid,
                 name: game.name,
@@ -430,7 +402,7 @@
             a.download = 'steam_games.json';
             a.click();
             URL.revokeObjectURL(url);
-            statusEl.textContent = "JSON descargado. Reemplázalo en tu repositorio.";
+            statusEl.textContent = "JSON descargado. Reemplázalo en tu repositorio de GitHub.";
         });
 
         document.getElementById('btn-download').addEventListener('click', () => {
