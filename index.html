@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Steam Library Abstract Art Generator</title>
+    <title>Steam Library Poster Showcase</title>
     <style>
         :root {
             --bg-color: #0e141b;
@@ -23,7 +23,6 @@
             overflow: hidden;
         }
 
-        /* Sidebar Control Panel */
         #sidebar {
             width: 320px;
             background-color: var(--panel-bg);
@@ -79,19 +78,10 @@
             margin-top: 5px;
         }
 
-        button:hover {
-            opacity: 0.9;
-        }
+        button:hover { opacity: 0.9; }
+        button:active { transform: scale(0.98); }
+        .btn-secondary { background: #2a475e; }
 
-        button:active {
-            transform: scale(0.98);
-        }
-
-        .btn-secondary {
-            background: #2a475e;
-        }
-
-        /* Main Display Canvas Area */
         #canvas-container {
             flex: 1;
             display: flex;
@@ -99,7 +89,6 @@
             align-items: center;
             padding: 20px;
             background-color: #05080c;
-            position: relative;
         }
 
         canvas {
@@ -107,7 +96,7 @@
             max-height: 95%;
             box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
             border-radius: 4px;
-            background: #000;
+            background: #0e141b;
         }
 
         #status {
@@ -120,25 +109,14 @@
 <body>
 
     <div id="sidebar">
-        <h1>Steam Art Generator</h1>
+        <h1>Steam Library Poster</h1>
         
         <div class="control-group">
-            <label for="style-select">Estilo Artístico:</label>
+            <label for="style-select">Diseño del Mural:</label>
             <select id="style-select">
-                <option value="mosaic">Mosaico Geométrico (Por Horas)</option>
-                <option value="spiral">Espiral Logarítmica</option>
-                <option value="chaos">Caos Poligonal Superpuesto</option>
-            </select>
-        </div>
-
-        <div class="control-group">
-            <label for="blend-select">Modo de Fusión (Blend):</label>
-            <select id="blend-select">
-                <option value="source-over">Normal</option>
-                <option value="screen">Screen (Luminoso)</option>
-                <option value="overlay">Overlay (Contraste)</option>
-                <option value="difference">Difference (Inversión)</option>
-                <option value="multiply">Multiply (Oscuro)</option>
+                <option value="grid">Mural de Colección (Grid)</option>
+                <option value="hero">Top 1 Destacado + Galería</option>
+                <option value="proportional">Mosaico Simétrico por Horas</option>
             </select>
         </div>
 
@@ -156,11 +134,11 @@
 
         <button id="btn-fetch">Cargar mi Librería</button>
         <button id="btn-demo" class="btn-secondary">Usar Modo Demo (Sin API)</button>
-        <button id="btn-render" style="display:none; background: #5c7e10;">Regenerar Arte</button>
+        <button id="btn-render" style="display:none; background: #5c7e10;">Cambiar Vista</button>
         
         <hr style="border: 0.5px solid #2a475e; width: 100%;">
 
-        <button id="btn-download" class="btn-secondary">Guardar Arte (PNG)</button>
+        <button id="btn-download" class="btn-secondary">Descargar Póster (PNG)</button>
 
         <div id="status">Listo para crear.</div>
     </div>
@@ -176,7 +154,6 @@
 
         let loadedGames = [];
 
-        // Juegos de prueba para el Modo Demo
         const demoGames = [
             { appid: 570, name: "Dota 2", playtime_forever: 12000 },
             { appid: 730, name: "CS:GO", playtime_forever: 8500 },
@@ -192,153 +169,149 @@
             { appid: 105600, name: "Terraria", playtime_forever: 3300 }
         ];
 
-        // Cargar imágenes de la API CDN de Steam
         async function loadGameImages(games) {
             statusEl.textContent = "Cargando portadas de juegos...";
             const imagePromises = games.map(game => {
                 return new Promise((resolve) => {
                     const img = new Image();
                     img.crossOrigin = "Anonymous";
-                    // URL pública directa de la cápsula del juego en Steam
                     img.src = `https://corsproxy.io/?https://cdn.cloudflare.steamstatic.com/steam/apps/${game.appid}/header.jpg`;
-                    
                     img.onload = () => resolve({ ...game, img });
-                    img.onerror = () => {
-                        // Si falla la imagen principal, usamos un placeholder geométrico
-                        resolve({ ...game, img: null });
-                    };
+                    img.onerror = () => resolve({ ...game, img: null });
                 });
             });
 
             return Promise.all(imagePromises);
         }
 
-        // Estilo 1: Mosaico Treemap
-        function renderMosaic(games) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            const totalPlaytime = games.reduce((acc, g) => acc + (g.playtime_forever || 10), 0);
-            
-            let x = 0, y = 0, width = canvas.width, height = canvas.height;
+        // Estilo 1: Grid Limpio (Póster de Colección)
+        function renderGrid(games) {
+            ctx.fillStyle = "#0e141b";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const cols = 4;
+            const padding = 40;
+            const gap = 20;
+
+            const itemWidth = (canvas.width - (padding * 2) - (gap * (cols - 1))) / cols;
+            const itemHeight = itemWidth * 0.46; // Ratio de portada de Steam
 
             games.forEach((game, index) => {
-                const ratio = (game.playtime_forever || 10) / totalPlaytime;
-                const area = canvas.width * canvas.height * ratio;
-                
-                let w = index % 2 === 0 ? Math.sqrt(area * 1.5) : area / height;
-                let h = area / w;
+                const col = index % cols;
+                const row = Math.floor(index / cols);
 
-                w = Math.min(Math.max(w, 80), canvas.width - x);
-                h = Math.min(Math.max(h, 80), canvas.height - y);
+                const x = padding + col * (itemWidth + gap);
+                const y = padding + row * (itemHeight + gap);
 
-                ctx.save();
-                ctx.globalCompositeOperation = document.getElementById('blend-select').value;
-                
+                if (y + itemHeight > canvas.height - padding) return;
+
+                if (game.img) {
+                    ctx.drawImage(game.img, x, y, itemWidth, itemHeight);
+                } else {
+                    ctx.fillStyle = "#1b2838";
+                    ctx.fillRect(x, y, itemWidth, itemHeight);
+                }
+
+                ctx.strokeStyle = "#2a475e";
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x, y, itemWidth, itemHeight);
+            });
+        }
+
+        // Estilo 2: Top 1 Destacado + Galería
+        function renderHero(games) {
+            ctx.fillStyle = "#0a0f14";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (games.length === 0) return;
+
+            const padding = 40;
+            const gap = 15;
+
+            // Banner Top 1
+            const topGame = games[0];
+            const heroWidth = canvas.width - (padding * 2);
+            const heroHeight = heroWidth * 0.45;
+
+            if (topGame.img) {
+                ctx.drawImage(topGame.img, padding, padding, heroWidth, heroHeight);
+            }
+            ctx.strokeStyle = "#66c0f4";
+            ctx.lineWidth = 4;
+            ctx.strokeRect(padding, padding, heroWidth, heroHeight);
+
+            // Sub-galería
+            const subGames = games.slice(1);
+            const cols = 4;
+            const startY = padding + heroHeight + 30;
+
+            const itemWidth = (canvas.width - (padding * 2) - (gap * (cols - 1))) / cols;
+            const itemHeight = itemWidth * 0.46;
+
+            subGames.forEach((game, index) => {
+                const col = index % cols;
+                const row = Math.floor(index / cols);
+
+                const x = padding + col * (itemWidth + gap);
+                const y = startY + row * (itemHeight + gap);
+
+                if (y + itemHeight > canvas.height - padding) return;
+
+                if (game.img) {
+                    ctx.drawImage(game.img, x, y, itemWidth, itemHeight);
+                }
+                ctx.strokeStyle = "#2a475e";
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x, y, itemWidth, itemHeight);
+            });
+        }
+
+        // Estilo 3: Mosaico Proporcional Limpio
+        function renderProportional(games) {
+            ctx.fillStyle = "#0e141b";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const total = games.reduce((acc, g) => acc + (g.playtime_forever || 10), 0);
+            let x = 30, y = 30;
+            const maxWidth = canvas.width - 60;
+
+            games.forEach((game) => {
+                const ratio = (game.playtime_forever || 10) / total;
+                const w = Math.max(120, Math.min(maxWidth, Math.sqrt(maxWidth * canvas.height * ratio * 1.5)));
+                const h = w * 0.46;
+
+                if (x + w > canvas.width - 30) {
+                    x = 30;
+                    y += h + 15;
+                }
+
+                if (y + h > canvas.height - 30) return;
+
                 if (game.img) {
                     ctx.drawImage(game.img, x, y, w, h);
-                } else {
-                    ctx.fillStyle = `hsl(${(game.appid * 137) % 360}, 60%, 40%)`;
-                    ctx.fillRect(x, y, w, h);
                 }
-
-                // Superposición abstracta
-                ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+                ctx.strokeStyle = "#2a475e";
                 ctx.lineWidth = 2;
                 ctx.strokeRect(x, y, w, h);
-                ctx.restore();
 
-                x += w * 0.6;
-                if (x >= canvas.width - 100) {
-                    x = 0;
-                    y += h * 0.6;
-                }
-                if (y >= canvas.height) y = 0;
+                x += w + 15;
             });
         }
 
-        // Estilo 2: Espiral Logarítmica
-        function renderSpiral(games) {
-            ctx.fillStyle = "#05080c";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
-            let angle = 0;
-            let radius = 20;
-
-            games.forEach((game, index) => {
-                const x = centerX + radius * Math.cos(angle);
-                const y = centerY + radius * Math.sin(angle);
-                const size = Math.max(60, Math.min(250, (game.playtime_forever / 50)));
-
-                ctx.save();
-                ctx.translate(x, y);
-                ctx.rotate(angle + index);
-                ctx.globalCompositeOperation = document.getElementById('blend-select').value;
-
-                if (game.img) {
-                    ctx.drawImage(game.img, -size / 2, -size / 2, size, size * 0.6);
-                } else {
-                    ctx.fillStyle = `hsl(${index * 30}, 70%, 50%)`;
-                    ctx.fillRect(-size / 2, -size / 2, size, size);
-                }
-
-                ctx.restore();
-
-                angle += 0.4;
-                radius += 12;
-            });
-        }
-
-        // Estilo 3: Caos Poligonal
-        function renderChaos(games) {
-            ctx.fillStyle = "#000";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            games.forEach((game, index) => {
-                const x = Math.random() * canvas.width;
-                const y = Math.random() * canvas.height;
-                const size = Math.random() * 300 + 100;
-
-                ctx.save();
-                ctx.translate(x, y);
-                ctx.rotate(Math.random() * Math.PI * 2);
-                ctx.globalCompositeOperation = document.getElementById('blend-select').value;
-
-                // Crear máscara triangular/poligonal
-                ctx.beginPath();
-                ctx.moveTo(0, -size / 2);
-                ctx.lineTo(size / 2, size / 2);
-                ctx.lineTo(-size / 2, size / 2);
-                ctx.closePath();
-                ctx.clip();
-
-                if (game.img) {
-                    ctx.drawImage(game.img, -size / 2, -size / 2, size, size);
-                } else {
-                    ctx.fillStyle = `hsl(${Math.random() * 360}, 80%, 50%)`;
-                    ctx.fill();
-                }
-
-                ctx.restore();
-            });
-        }
-
-        // Controlador de renderizado
         function generateArt() {
             if (loadedGames.length === 0) return;
 
             const style = document.getElementById('style-select').value;
-            statusEl.textContent = "Generando composición...";
+            statusEl.textContent = "Generando diseño...";
 
             setTimeout(() => {
-                if (style === 'mosaic') renderMosaic(loadedGames);
-                else if (style === 'spiral') renderSpiral(loadedGames);
-                else if (style === 'chaos') renderChaos(loadedGames);
-                statusEl.textContent = "¡Obra de arte generada!";
+                if (style === 'grid') renderGrid(loadedGames);
+                else if (style === 'hero') renderHero(loadedGames);
+                else if (style === 'proportional') renderProportional(loadedGames);
+                statusEl.textContent = "¡Póster generado con éxito!";
             }, 50);
         }
 
-        // Eventos de botones
         document.getElementById('btn-demo').addEventListener('click', async () => {
             loadedGames = await loadGameImages(demoGames);
             document.getElementById('btn-render').style.display = 'block';
@@ -364,9 +337,8 @@
                 const data = await response.json();
                 
                 if (data.response && data.response.games) {
-                    // Ordenar por tiempo jugado de mayor a menor
                     const userGames = data.response.games.sort((a, b) => b.playtime_forever - a.playtime_forever);
-                    loadedGames = await loadGameImages(userGames.slice(0, 30)); // Tomar los 30 más jugados
+                    loadedGames = await loadGameImages(userGames.slice(0, 24));
                     document.getElementById('btn-render').style.display = 'block';
                     generateArt();
                 } else {
@@ -378,10 +350,9 @@
             }
         });
 
-        // Descargar Canvas como imagen PNG
         document.getElementById('btn-download').addEventListener('click', () => {
             const link = document.createElement('a');
-            link.download = 'steam-abstract-art.png';
+            link.download = 'steam-library-poster.png';
             link.href = canvas.toDataURL();
             link.click();
         });
