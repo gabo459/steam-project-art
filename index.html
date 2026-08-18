@@ -157,10 +157,53 @@
 
         let loadedGames = [];
 
-        // Proxy de imágenes especializado (wsrv.nl) que permite CORS ilimitado para Canvas
+        // Función con consulta segura defensiva a la API de Steam mediante proxies alternativos
+        async function fetchSteamApiData(steamId, apiKey) {
+            const rawSteamUrl = `https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamId}&format=json&include_appinfo=true`;
+            
+            const proxyConfigs = [
+                {
+                    url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(rawSteamUrl)}`,
+                    parse: (text) => JSON.parse(text)
+                },
+                {
+                    url: `https://corsproxy.io/?${encodeURIComponent(rawSteamUrl)}`,
+                    parse: (text) => JSON.parse(text)
+                },
+                {
+                    url: `https://api.allorigins.win/get?url=${encodeURIComponent(rawSteamUrl)}`,
+                    parse: (text) => {
+                        const wrapper = JSON.parse(text);
+                        return JSON.parse(wrapper.contents);
+                    }
+                }
+            ];
+
+            for (const config of proxyConfigs) {
+                try {
+                    statusEl.textContent = "Consultando datos de Steam...";
+                    const res = await fetch(config.url);
+                    if (!res.ok) continue;
+
+                    const text = await res.text();
+                    if (!text || text.trim().length === 0) continue;
+
+                    const parsedData = config.parse(text);
+                    if (parsedData && parsedData.response) {
+                        return parsedData;
+                    }
+                } catch (e) {
+                    console.warn(`Falló el proxy: ${config.url}`, e);
+                }
+            }
+
+            throw new Error("Todos los proxies de red fallaron o fueron bloqueados.");
+        }
+
+        // Servicio especializado CDN wsrv.nl para imágenes con cabeceras CORS
         function getCorsImageUrl(appid) {
-            const rawSteamUrl = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`;
-            return `https://wsrv.nl/?url=${encodeURIComponent(rawSteamUrl)}&output=jpg`;
+            const rawUrl = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`;
+            return `https://wsrv.nl/?url=${encodeURIComponent(rawUrl)}&output=jpg`;
         }
 
         function imageToBase64(img) {
@@ -173,7 +216,6 @@
                 tempCtx.drawImage(img, 0, 0);
                 return tempCanvas.toDataURL('image/jpeg', 0.85);
             } catch (e) {
-                console.error("Error al convertir a Base64:", e);
                 return null;
             }
         }
@@ -186,7 +228,6 @@
                     const img = new Image();
                     img.crossOrigin = "anonymous";
 
-                    // 1. Si el JSON traía la imagen incrustada en Base64
                     if (game.imageBase64) {
                         img.onload = () => resolve({ ...game, img });
                         img.onerror = () => resolve({ ...game, img: null });
@@ -194,10 +235,8 @@
                         return;
                     }
 
-                    // 2. Carga directa usando CDN CORS de imágenes
                     img.onload = () => resolve({ ...game, img });
                     img.onerror = () => {
-                        // Reintento con ruta secundaria
                         const fallbackImg = new Image();
                         fallbackImg.crossOrigin = "anonymous";
                         fallbackImg.onload = () => resolve({ ...game, img: fallbackImg });
@@ -341,7 +380,7 @@
                 generateArt();
             } catch (err) {
                 console.error(err);
-                statusEl.textContent = "Error de formato en steam_games.json.";
+                statusEl.textContent = "Error de lectura en steam_games.json.";
             }
         }
 
@@ -359,16 +398,8 @@
                 return;
             }
 
-            statusEl.textContent = "Consultando API de Steam...";
-            const steamApiUrl = `https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamId}&format=json&include_appinfo=true`;
-            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(steamApiUrl)}`;
-
             try {
-                const response = await fetch(proxyUrl);
-                if (!response.ok) throw new Error("Error en la petición de red");
-                
-                const wrapperData = await response.json();
-                const data = JSON.parse(wrapperData.contents);
+                const data = await fetchSteamApiData(steamId, apiKey);
                 
                 if (data.response && data.response.games) {
                     const userGames = data.response.games.sort((a, b) => b.playtime_forever - a.playtime_forever);
@@ -376,18 +407,18 @@
                     document.getElementById('btn-export-json').style.display = 'block';
                     generateArt();
                 } else {
-                    statusEl.textContent = "Error: Perfil privado o credenciales incorrectas.";
+                    statusEl.textContent = "Error: Perfil privado o datos no encontrados.";
                 }
             } catch (err) {
                 console.error(err);
-                statusEl.textContent = "Error al conectar con la API de Steam.";
+                statusEl.textContent = "Error de red: Los proxies fallaron en conectar con Steam.";
             }
         });
 
         document.getElementById('btn-export-json').addEventListener('click', () => {
             if (loadedGames.length === 0) return;
 
-            statusEl.textContent = "Generando JSON con imágenes en Base64...";
+            statusEl.textContent = "Generando JSON con imágenes...";
             const cacheData = loadedGames.map(game => ({
                 appid: game.appid,
                 name: game.name,
@@ -402,7 +433,7 @@
             a.download = 'steam_games.json';
             a.click();
             URL.revokeObjectURL(url);
-            statusEl.textContent = "JSON descargado. Reemplázalo en tu repositorio de GitHub.";
+            statusEl.textContent = "JSON descargado. Reemplázalo en tu repositorio GitHub.";
         });
 
         document.getElementById('btn-download').addEventListener('click', () => {
