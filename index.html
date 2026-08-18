@@ -114,8 +114,8 @@
         <div class="control-group">
             <label for="style-select">Diseño del Mural:</label>
             <select id="style-select">
-                <option value="grid">Mural de Colección (Grid)</option>
                 <option value="hero">Top 1 Destacado + Galería</option>
+                <option value="grid">Mural de Colección (Grid)</option>
                 <option value="proportional">Mosaico Simétrico por Horas</option>
             </select>
         </div>
@@ -157,6 +157,30 @@
 
         let loadedGames = [];
 
+        // Función para descargar imagen como Blob seguro (Evita errores de CORS en Canvas)
+        async function fetchImageBlob(appid) {
+            const rawUrl = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`;
+            const proxies = [
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(rawUrl)}`,
+                `https://corsproxy.io/?${encodeURIComponent(rawUrl)}`
+            ];
+
+            for (const proxyUrl of proxies) {
+                try {
+                    const response = await fetch(proxyUrl);
+                    if (response.ok) {
+                        const blob = await response.blob();
+                        if (blob.type.startsWith('image/')) {
+                            return URL.createObjectURL(blob);
+                        }
+                    }
+                } catch (err) {
+                    console.warn(`Proxy falló para AppID ${appid}, probando siguiente...`);
+                }
+            }
+            return null;
+        }
+
         function imageToBase64(img) {
             if (!img) return null;
             try {
@@ -172,35 +196,31 @@
         }
 
         async function loadGameImages(games) {
-            statusEl.textContent = "Cargando portadas con proxy CORS...";
-            const imagePromises = games.map(game => {
-                return new Promise((resolve) => {
-                    // Si ya viene procesado en Base64 dentro del JSON
-                    if (game.imageBase64) {
+            statusEl.textContent = "Descargando portadas de juegos en memoria...";
+            
+            const imagePromises = games.map(async (game, index) => {
+                // 1. Si el JSON ya tiene la imagen codificada en Base64
+                if (game.imageBase64) {
+                    return new Promise((resolve) => {
                         const img = new Image();
                         img.onload = () => resolve({ ...game, img });
                         img.onerror = () => resolve({ ...game, img: null });
                         img.src = game.imageBase64;
-                        return;
-                    }
+                    });
+                }
 
-                    // Si viene por AppID, usar proxy CORS para evitar bloqueos del navegador
-                    const img = new Image();
-                    img.crossOrigin = "anonymous";
-                    const steamUrl = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${game.appid}/header.jpg`;
-                    img.src = `https://corsproxy.io/?${encodeURIComponent(steamUrl)}`;
+                // 2. Descargar como Blob local
+                const blobUrl = await fetchImageBlob(game.appid);
+                if (blobUrl) {
+                    return new Promise((resolve) => {
+                        const img = new Image();
+                        img.onload = () => resolve({ ...game, img });
+                        img.onerror = () => resolve({ ...game, img: null });
+                        img.src = blobUrl;
+                    });
+                }
 
-                    img.onload = () => resolve({ ...game, img });
-                    img.onerror = () => {
-                        // Fallback a segunda ruta de CDN con proxy
-                        const imgFallback = new Image();
-                        imgFallback.crossOrigin = "anonymous";
-                        const fallbackUrl = `https://cdn.cloudflare.steamstatic.com/steam/apps/${game.appid}/header.jpg`;
-                        imgFallback.src = `https://corsproxy.io/?${encodeURIComponent(fallbackUrl)}`;
-                        imgFallback.onload = () => resolve({ ...game, img: imgFallback });
-                        imgFallback.onerror = () => resolve({ ...game, img: null });
-                    };
-                });
+                return { ...game, img: null };
             });
 
             return Promise.all(imagePromises);
@@ -307,13 +327,13 @@
             if (loadedGames.length === 0) return;
 
             const style = document.getElementById('style-select').value;
-            statusEl.textContent = "Generando póster...";
+            statusEl.textContent = "Dibujando póster...";
 
             setTimeout(() => {
                 if (style === 'grid') renderGrid(loadedGames);
                 else if (style === 'hero') renderHero(loadedGames);
                 else if (style === 'proportional') renderProportional(loadedGames);
-                statusEl.textContent = "¡Póster renderizado con éxito!";
+                statusEl.textContent = "¡Póster generado con éxito!";
             }, 50);
         }
 
@@ -349,7 +369,7 @@
             }
 
             statusEl.textContent = "Consultando API de Steam...";
-            const endpoint = `https://corsproxy.io/?https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamId}&format=json&include_appinfo=true`;
+            const endpoint = `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamId}&format=json&include_appinfo=true`)}`;
 
             try {
                 const response = await fetch(endpoint);
