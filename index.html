@@ -122,6 +122,10 @@
 
         <hr style="border: 0.5px solid #2a475e; width: 100%;">
 
+        <button id="btn-load-repo" style="background: #2e7d32;">Cargar desde GitHub (JSON)</button>
+
+        <hr style="border: 0.5px solid #2a475e; width: 100%;">
+
         <div class="control-group">
             <label for="steam-id">Steam ID64:</label>
             <input type="text" id="steam-id" placeholder="Ej: 76561198000000000">
@@ -132,15 +136,14 @@
             <input type="password" id="api-key" placeholder="Tu clave de API de Steam">
         </div>
 
-        <button id="btn-fetch">Cargar mi Librería</button>
-        <button id="btn-demo" class="btn-secondary">Usar Modo Demo (Sin API)</button>
-        <button id="btn-render" style="display:none; background: #5c7e10;">Cambiar Vista</button>
+        <button id="btn-fetch">Consultar API de Steam</button>
+        <button id="btn-export-json" class="btn-secondary" style="display:none;">Guardar Librería a JSON</button>
         
         <hr style="border: 0.5px solid #2a475e; width: 100%;">
 
         <button id="btn-download" class="btn-secondary">Descargar Póster (PNG)</button>
 
-        <div id="status">Listo para crear.</div>
+        <div id="status">Iniciando...</div>
     </div>
 
     <div id="canvas-container">
@@ -154,41 +157,40 @@
 
         let loadedGames = [];
 
-        const demoGames = [
-            { appid: 570, name: "Dota 2", playtime_forever: 12000 },
-            { appid: 730, name: "CS:GO", playtime_forever: 8500 },
-            { appid: 1091500, name: "Cyberpunk 2077", playtime_forever: 4200 },
-            { appid: 271590, name: "GTA V", playtime_forever: 3100 },
-            { appid: 1172470, name: "Apex Legends", playtime_forever: 2500 },
-            { appid: 413150, name: "Stardew Valley", playtime_forever: 1800 },
-            { appid: 292030, name: "The Witcher 3", playtime_forever: 5400 },
-            { appid: 1086000, name: "Baldur's Gate 3", playtime_forever: 6200 },
-            { appid: 1145360, name: "Hades", playtime_forever: 1500 },
-            { appid: 367520, name: "Hollow Knight", playtime_forever: 2100 },
-            { appid: 1245620, name: "Elden Ring", playtime_forever: 7800 },
-            { appid: 105600, name: "Terraria", playtime_forever: 3300 }
-        ];
+        function imageToBase64(img) {
+            if (!img) return null;
+            try {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = img.naturalWidth || img.width || 460;
+                tempCanvas.height = img.naturalHeight || img.height || 215;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.drawImage(img, 0, 0);
+                return tempCanvas.toDataURL('image/jpeg', 0.85);
+            } catch (e) {
+                return null;
+            }
+        }
 
-        // Carga de imágenes optimizada con enlace directo a CDN sin bloqueos CORS
         async function loadGameImages(games) {
-            statusEl.textContent = "Cargando portadas de juegos...";
+            statusEl.textContent = "Cargando portadas...";
             const imagePromises = games.map(game => {
                 return new Promise((resolve) => {
+                    // Si el JSON ya trae la imagen en Base64
+                    if (game.imageBase64) {
+                        const img = new Image();
+                        img.onload = () => resolve({ ...game, img });
+                        img.onerror = () => resolve({ ...game, img: null });
+                        img.src = game.imageBase64;
+                        return;
+                    }
+
+                    // Si solo trae la AppID, la descarga de la CDN de Steam
                     const img = new Image();
                     img.crossOrigin = "anonymous";
-                    
-                    // URL directa de Cloudflare/Akamai CDN de Steam
                     img.src = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${game.appid}/header.jpg`;
 
                     img.onload = () => resolve({ ...game, img });
-                    img.onerror = () => {
-                        // Respaldo de URL secundaria si la principal falla
-                        const imgFallback = new Image();
-                        imgFallback.crossOrigin = "anonymous";
-                        imgFallback.src = `https://cdn.cloudflare.steamstatic.com/steam/apps/${game.appid}/header.jpg`;
-                        imgFallback.onload = () => resolve({ ...game, img: imgFallback });
-                        imgFallback.onerror = () => resolve({ ...game, img: null });
-                    };
+                    img.onerror = () => resolve({ ...game, img: null });
                 });
             });
 
@@ -199,7 +201,6 @@
             if (game.img) {
                 ctx.drawImage(game.img, x, y, w, h);
             } else {
-                // Fondo de tarjeta de respaldo si no hay portada disponible
                 ctx.fillStyle = "#1b2838";
                 ctx.fillRect(x, y, w, h);
                 ctx.fillStyle = "#66c0f4";
@@ -211,7 +212,7 @@
             ctx.strokeRect(x, y, w, h);
         }
 
-        // Estilo 1: Grid Limpio
+        // Diseños
         function renderGrid(games) {
             ctx.fillStyle = "#0e141b";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -235,7 +236,6 @@
             });
         }
 
-        // Estilo 2: Top 1 Destacado + Galería
         function renderHero(games) {
             ctx.fillStyle = "#0a0f14";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -270,7 +270,6 @@
             });
         }
 
-        // Estilo 3: Mosaico Proporcional
         function renderProportional(games) {
             ctx.fillStyle = "#0e141b";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -300,23 +299,40 @@
             if (loadedGames.length === 0) return;
 
             const style = document.getElementById('style-select').value;
-            statusEl.textContent = "Generando diseño...";
+            statusEl.textContent = "Generando póster...";
 
             setTimeout(() => {
                 if (style === 'grid') renderGrid(loadedGames);
                 else if (style === 'hero') renderHero(loadedGames);
                 else if (style === 'proportional') renderProportional(loadedGames);
-                statusEl.textContent = "¡Póster generado con éxito!";
+                statusEl.textContent = "¡Póster renderizado!";
             }, 50);
         }
 
-        document.getElementById('btn-demo').addEventListener('click', async () => {
-            loadedGames = await loadGameImages(demoGames);
-            document.getElementById('btn-render').style.display = 'block';
-            generateArt();
-        });
+        // Cargar automáticamente desde steam_games.json al entrar a la web
+        async function fetchRepoJSON() {
+            statusEl.textContent = "Buscando steam_games.json en el repositorio...";
+            try {
+                const response = await fetch('./steam_games.json');
+                if (response.ok) {
+                    const gamesData = await response.json();
+                    loadedGames = await loadGameImages(gamesData);
+                    generateArt();
+                } else {
+                    statusEl.textContent = "No se encontró steam_games.json en el repositorio.";
+                }
+            } catch (err) {
+                console.error(err);
+                statusEl.textContent = "Error al leer steam_games.json.";
+            }
+        }
 
-        document.getElementById('btn-render').addEventListener('click', generateArt);
+        // Al cargar la página
+        window.addEventListener('DOMContentLoaded', fetchRepoJSON);
+
+        // Eventos
+        document.getElementById('btn-load-repo').addEventListener('click', fetchRepoJSON);
+        document.getElementById('style-select').addEventListener('change', generateArt);
 
         document.getElementById('btn-fetch').addEventListener('click', async () => {
             const steamId = document.getElementById('steam-id').value.trim();
@@ -327,9 +343,7 @@
                 return;
             }
 
-            statusEl.textContent = "Obteniendo datos de Steam...";
-            
-            // Petición directa a la API de Steam
+            statusEl.textContent = "Consultando API de Steam...";
             const endpoint = `https://corsproxy.io/?https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamId}&format=json&include_appinfo=true`;
 
             try {
@@ -339,7 +353,7 @@
                 if (data.response && data.response.games) {
                     const userGames = data.response.games.sort((a, b) => b.playtime_forever - a.playtime_forever);
                     loadedGames = await loadGameImages(userGames.slice(0, 24));
-                    document.getElementById('btn-render').style.display = 'block';
+                    document.getElementById('btn-export-json').style.display = 'block';
                     generateArt();
                 } else {
                     statusEl.textContent = "Error: Perfil privado o datos incorrectos.";
@@ -348,6 +362,28 @@
                 console.error(err);
                 statusEl.textContent = "Error al conectar con la API de Steam.";
             }
+        });
+
+        // Guardar JSON listo para subir a GitHub
+        document.getElementById('btn-export-json').addEventListener('click', () => {
+            if (loadedGames.length === 0) return;
+
+            statusEl.textContent = "Generando JSON...";
+            const cacheData = loadedGames.map(game => ({
+                appid: game.appid,
+                name: game.name,
+                playtime_forever: game.playtime_forever,
+                imageBase64: imageToBase64(game.img)
+            }));
+
+            const blob = new Blob([JSON.stringify(cacheData, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'steam_games.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            statusEl.textContent = "Descargado. Reemplaza el archivo en GitHub con este.";
         });
 
         document.getElementById('btn-download').addEventListener('click', () => {
