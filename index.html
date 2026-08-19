@@ -6,6 +6,7 @@
     <title>Steam Library Poster Showcase</title>
 
     <link rel="preconnect" href="https://wsrv.nl" crossorigin>
+    <link rel="preconnect" href="https://api.allorigins.win" crossorigin>
     <link rel="preconnect" href="https://shared.cloudflare.steamstatic.com" crossorigin>
     <link rel="preconnect" href="https://steamproxy.ernestoygabo.workers.dev" crossorigin>
 
@@ -216,6 +217,51 @@
             return input;
         }
 
+        async function getSteamProfileInfo(userInput, workerData) {
+            let name = parseSteamName(userInput);
+            let avatarUrl = null;
+
+            if (workerData.player && (workerData.player.avatarfull || workerData.player.avatar)) {
+                return {
+                    name: workerData.player.personaname || name,
+                    avatarUrl: workerData.player.avatarfull || workerData.player.avatar
+                };
+            }
+
+            try {
+                let steamUrl = userInput.trim();
+                if (!steamUrl.startsWith('http')) {
+                    if (/^\d{17}$/.test(userInput)) {
+                        steamUrl = `https://steamcommunity.com/profiles/${userInput}`;
+                    } else {
+                        steamUrl = `https://steamcommunity.com/id/${userInput}`;
+                    }
+                }
+                const xmlUrl = steamUrl.replace(/\/$/, "") + "/?xml=1";
+                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(xmlUrl)}`;
+                
+                const res = await fetch(proxyUrl);
+                const text = await res.text();
+                
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(text, "text/xml");
+                
+                const avatarNode = xmlDoc.querySelector("avatarFull") || xmlDoc.querySelector("avatarIcon");
+                const nameNode = xmlDoc.querySelector("steamID");
+
+                if (avatarNode && avatarNode.textContent) {
+                    avatarUrl = avatarNode.textContent.trim();
+                }
+                if (nameNode && nameNode.textContent) {
+                    name = nameNode.textContent.trim();
+                }
+            } catch (e) {
+                console.warn("No se pudo obtener el avatar desde el XML público:", e);
+            }
+
+            return { name, avatarUrl };
+        }
+
         async function fetchGameImageWithFallback(appid, orientation) {
             let sources = [];
             if (orientation === 'horizontal') {
@@ -319,7 +365,8 @@
         async function loadAvatarImage(url) {
             if (!url) return null;
             const sources = [
-                `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=webp&q=80`,
+                `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=webp&q=85`,
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
                 url
             ];
 
@@ -627,7 +674,7 @@
                 return;
             }
 
-            statusEl.textContent = "Consultando perfil con Cloudflare Worker...";
+            statusEl.textContent = "Consultando datos del usuario y juegos...";
 
             try {
                 const response = await fetch(`${WORKER_URL}?user=${encodeURIComponent(userInput)}`);
@@ -648,14 +695,14 @@
                         return;
                     }
 
-                    const player = data.player || (data.response && data.response.players ? data.response.players[0] : {}) || {};
-                    const avatarUrl = player.avatarfull || player.avatarmedium || player.avatar;
-                    const avatarImg = await loadAvatarImage(avatarUrl);
+                    statusEl.textContent = "Obteniendo avatar del perfil de Steam...";
+                    const profileInfo = await getSteamProfileInfo(userInput, data);
+                    const avatarImg = await loadAvatarImage(profileInfo.avatarUrl);
 
                     const totalMinutes = rawUserGames.reduce((sum, g) => sum + (g.playtime_forever || 0), 0);
 
                     userProfile = {
-                        name: player.personaname || parseSteamName(userInput),
+                        name: profileInfo.name,
                         avatarImg: avatarImg,
                         totalGames: rawUserGames.length,
                         totalHours: Math.round(totalMinutes / 60)
