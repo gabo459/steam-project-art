@@ -107,6 +107,7 @@
 
         canvas {
             max-width: 95%;
+            max-height: 95%;
             box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
             border-radius: 4px;
             background: #0e141b;
@@ -128,16 +129,21 @@
             <label for="style-select">Diseño del Mural:</label>
             <select id="style-select">
                 <option value="proportional">Mosaico Escala por Horas</option>
-                <option value="grid">Mural Uniforme (Grid)</option>
                 <option value="hero">Top 1 Destacado + Galería</option>
+                <option value="grid">Mural Uniforme (Grid)</option>
             </select>
         </div>
 
         <div class="control-group">
             <label for="limit-select">Cantidad de Juegos:</label>
             <select id="limit-select">
-                <option value="100" selected>Top 100 más jugados</option>
+                <option value="25" selected>Top 25 más jugados</option>
+                <option value="20">Top 20 más jugados</option>
+                <option value="15">Top 15 más jugados</option>
+                <option value="10">Top 10 más jugados</option>
+                <option value="5">Top 5 más jugados</option>
                 <option value="50">Top 50 más jugados</option>
+                <option value="100">Top 100 más jugados</option>
                 <option value="250">Top 250 más jugados</option>
                 <option value="500">Top 500 más jugados</option>
                 <option value="all">Todos los jugados (>0h)</option>
@@ -162,7 +168,7 @@
     </div>
 
     <div id="canvas-container">
-        <canvas id="art-canvas" width="1600" height="1600"></canvas>
+        <canvas id="art-canvas" width="1200" height="1200"></canvas>
     </div>
 
     <script>
@@ -214,11 +220,13 @@
             ctx.strokeRect(x, y, w, h);
         }
 
-        // Determina el número de columnas dinámicamente según la cantidad de juegos
         function getDynamicColumns(count) {
-            if (count <= 30) return 4;
-            if (count <= 80) return 6;
-            if (count <= 200) return 8;
+            if (count <= 5) return 2;
+            if (count <= 10) return 3;
+            if (count <= 25) return 5;
+            if (count <= 50) return 6;
+            if (count <= 100) return 8;
+            if (count <= 250) return 10;
             if (count <= 500) return 12;
             return 16;
         }
@@ -226,10 +234,17 @@
         function renderProportional(games) {
             if (games.length === 0) return;
 
-            canvas.width = 1800; // Ancho base ampliado para colecciones grandes
+            const count = games.length;
+            
+            // Ajuste dinámico de ancho del lienzo según cantidad de juegos
+            if (count <= 5) canvas.width = 1000;
+            else if (count <= 15) canvas.width = 1200;
+            else if (count <= 50) canvas.width = 1500;
+            else canvas.width = 1800;
+
             const maxPlaytime = games[0].playtime_forever || 1;
             const padding = 30;
-            const gap = 10;
+            const gap = 12;
             const maxWidth = canvas.width - (padding * 2);
 
             let x = padding;
@@ -237,12 +252,17 @@
             let rowMaxHeight = 0;
             const itemsToDraw = [];
 
-            // Factor de escala dinámico según cantidad total
-            const baseCardWidth = games.length > 300 ? 320 : 500;
+            // Escala base adaptativa
+            let baseCardWidth;
+            if (count <= 5) baseCardWidth = maxWidth * 0.48;
+            else if (count <= 10) baseCardWidth = maxWidth * 0.38;
+            else if (count <= 25) baseCardWidth = maxWidth * 0.30;
+            else if (count <= 100) baseCardWidth = maxWidth * 0.22;
+            else baseCardWidth = 320;
 
             games.forEach((game) => {
                 const ratio = Math.sqrt(game.playtime_forever / maxPlaytime);
-                let w = Math.max(60, Math.min(maxWidth, baseCardWidth * ratio));
+                let w = Math.max(70, Math.min(maxWidth, baseCardWidth * ratio));
                 let h = w * 0.462;
 
                 if (x + w > canvas.width - padding) {
@@ -257,8 +277,8 @@
                 if (h > rowMaxHeight) rowMaxHeight = h;
             });
 
-            const calculatedHeight = y + rowMaxHeight + padding;
-            canvas.height = Math.max(1000, Math.min(10000, calculatedHeight));
+            // Altura exacta sin espacio sobrante
+            canvas.height = y + rowMaxHeight + padding;
 
             ctx.fillStyle = "#0e141b";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -271,17 +291,22 @@
         function renderGrid(games) {
             if (games.length === 0) return;
 
-            const cols = getDynamicColumns(games.length);
-            canvas.width = cols >= 12 ? 2200 : 1600;
+            const count = games.length;
+            const cols = getDynamicColumns(count);
+            
+            if (count <= 10) canvas.width = 1000;
+            else if (count <= 25) canvas.width = 1200;
+            else if (count <= 100) canvas.width = 1600;
+            else canvas.width = 2000;
 
             const padding = 30;
-            const gap = 10;
+            const gap = 12;
 
             const itemWidth = (canvas.width - (padding * 2) - (gap * (cols - 1))) / cols;
             const itemHeight = itemWidth * 0.462;
 
             const rows = Math.ceil(games.length / cols);
-            canvas.height = Math.max(800, Math.min(10000, (padding * 2) + (rows * (itemHeight + gap))));
+            canvas.height = (padding * 2) + (rows * (itemHeight + gap)) - gap;
 
             ctx.fillStyle = "#0e141b";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -300,23 +325,36 @@
         function renderHero(games) {
             if (games.length === 0) return;
 
-            canvas.width = 1600;
+            const count = games.length;
+            if (count <= 10) canvas.width = 1000;
+            else if (count <= 25) canvas.width = 1200;
+            else canvas.width = 1600;
+
             const padding = 30;
-            const gap = 10;
+            const gap = 12;
 
             const topGame = games[0];
             const heroWidth = canvas.width - (padding * 2);
             const heroHeight = heroWidth * 0.462;
 
             const subGames = games.slice(1);
+
+            if (subGames.length === 0) {
+                canvas.height = (padding * 2) + heroHeight;
+                ctx.fillStyle = "#0a0f14";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                drawCard(topGame, padding, padding, heroWidth, heroHeight);
+                return;
+            }
+
             const cols = getDynamicColumns(subGames.length);
-            const startY = padding + heroHeight + 20;
+            const startY = padding + heroHeight + gap;
 
             const itemWidth = (canvas.width - (padding * 2) - (gap * (cols - 1))) / cols;
             const itemHeight = itemWidth * 0.462;
 
             const rows = Math.ceil(subGames.length / cols);
-            canvas.height = Math.max(800, Math.min(10000, startY + (rows * (itemHeight + gap)) + padding));
+            canvas.height = startY + (rows * (itemHeight + gap)) + padding - gap;
 
             ctx.fillStyle = "#0a0f14";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
