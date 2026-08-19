@@ -270,58 +270,67 @@
             return { name, avatarUrl };
         }
 
-        async function fetchGameImageWithFallback(appid, orientation) {
-            let sources = [];
-            if (orientation === 'horizontal') {
-                sources = [
-                    `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`,
-                    `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/capsule_616x353.jpg`,
-                    `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`
-                ];
-            } else {
-                sources = [
-                    `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`,
-                    `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`,
-                    `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/capsule_616x353.jpg`
-                ];
-            }
-
-            for (const rawUrl of sources) {
-                const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(rawUrl)}&output=webp&q=75`;
-                try {
-                    const img = await new Promise((resolve, reject) => {
-                        const i = new Image();
-                        i.crossOrigin = "anonymous";
-                        i.onload = () => resolve(i);
-                        i.onerror = () => reject();
-                        i.src = proxyUrl;
-                    });
-                    if (img && img.naturalWidth > 0) return img;
-                } catch (e) {}
-            }
-            return null;
+        async function fetchGameImageWithFallback(game, orientation) {
+        const appid = game.appid;
+        let sources = [];
+    
+        // 1. Portadas estándar de la tienda
+        if (orientation === 'horizontal') {
+            sources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`);
+            sources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/capsule_616x353.jpg`);
+            sources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`);
+        } else {
+            sources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`);
+            sources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`);
+            sources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/capsule_616x353.jpg`);
         }
-
-        async function loadGameImages(games) {
-            const BATCH_SIZE = 30;
-            const results = [];
-            const orientation = document.getElementById('orientation-select').value;
-
-            for (let i = 0; i < games.length; i += BATCH_SIZE) {
-                const batch = games.slice(i, i + BATCH_SIZE);
-                statusEl.textContent = `Descargando imágenes (${Math.min(i + BATCH_SIZE, games.length)} de ${games.length})...`;
-                
-                const batchPromises = batch.map(async (game) => {
-                    const img = await fetchGameImageWithFallback(game.appid, orientation);
-                    return { ...game, img };
+    
+        // 2. Iconos e imágenes comunitarias del perfil (proporcionadas por la API)
+        if (game.img_logo_url) {
+            sources.push(`https://media.steampowered.com/steamcommunity/public/images/apps/${appid}/${game.img_logo_url}.jpg`);
+        }
+        if (game.img_icon_url) {
+            sources.push(`https://media.steampowered.com/steamcommunity/public/images/apps/${appid}/${game.img_icon_url}.jpg`);
+        }
+    
+        // Probar cada fuente a través del proxy
+        for (const rawUrl of sources) {
+            const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(rawUrl)}&output=webp&q=75`;
+            try {
+                const img = await new Promise((resolve, reject) => {
+                    const i = new Image();
+                    i.crossOrigin = "anonymous";
+                    i.onload = () => resolve(i);
+                    i.onerror = () => reject();
+                    i.src = proxyUrl;
                 });
-
-                const batchResults = await Promise.all(batchPromises);
-                results.push(...batchResults);
-            }
-
-            return results;
+                if (img && img.naturalWidth > 0) return img;
+            } catch (e) {}
         }
+        return null;
+    }
+    
+    async function loadGameImages(games) {
+        const BATCH_SIZE = 30;
+        const results = [];
+        const orientation = document.getElementById('orientation-select').value;
+    
+        for (let i = 0; i < games.length; i += BATCH_SIZE) {
+            const batch = games.slice(i, i + BATCH_SIZE);
+            statusEl.textContent = `Descargando imágenes (${Math.min(i + BATCH_SIZE, games.length)} de ${games.length})...`;
+            
+            const batchPromises = batch.map(async (game) => {
+                // Se pasa todo el objeto 'game' en lugar de solo 'game.appid'
+                const img = await fetchGameImageWithFallback(game, orientation);
+                return { ...game, img };
+            });
+    
+            const batchResults = await Promise.all(batchPromises);
+            results.push(...batchResults);
+        }
+    
+        return results;
+    }
 
         function formatPlaytime(minutes) {
             if (!minutes || minutes <= 0) return '0 hrs';
