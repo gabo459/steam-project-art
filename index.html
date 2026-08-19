@@ -127,9 +127,20 @@
         <div class="control-group">
             <label for="style-select">Diseño del Mural:</label>
             <select id="style-select">
-                <option value="proportional">Mosaico Escala por Horas (Todos)</option>
-                <option value="hero">Top 1 Destacado + Galería</option>
+                <option value="proportional">Mosaico Escala por Horas</option>
                 <option value="grid">Mural Uniforme (Grid)</option>
+                <option value="hero">Top 1 Destacado + Galería</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="limit-select">Cantidad de Juegos:</label>
+            <select id="limit-select">
+                <option value="100" selected>Top 100 más jugados</option>
+                <option value="50">Top 50 más jugados</option>
+                <option value="250">Top 250 más jugados</option>
+                <option value="500">Top 500 más jugados</option>
+                <option value="all">Todos los jugados (>0h)</option>
             </select>
         </div>
 
@@ -151,7 +162,7 @@
     </div>
 
     <div id="canvas-container">
-        <canvas id="art-canvas" width="1200" height="1200"></canvas>
+        <canvas id="art-canvas" width="1600" height="1600"></canvas>
     </div>
 
     <script>
@@ -162,6 +173,7 @@
         const ctx = canvas.getContext('2d');
         const statusEl = document.getElementById('status');
 
+        let rawUserGames = [];
         let loadedGames = [];
 
         function getCorsImageUrl(appid) {
@@ -194,21 +206,30 @@
                 ctx.fillStyle = "#1b2838";
                 ctx.fillRect(x, y, w, h);
                 ctx.fillStyle = "#66c0f4";
-                ctx.font = "bold 12px Segoe UI, sans-serif";
-                ctx.fillText(game.name || `App ${game.appid}`, x + 8, y + h / 2);
+                ctx.font = "bold 11px Segoe UI, sans-serif";
+                ctx.fillText(game.name || `App ${game.appid}`, x + 5, y + h / 2);
             }
             ctx.strokeStyle = "#2a475e";
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 1.5;
             ctx.strokeRect(x, y, w, h);
         }
 
-        // Diseño 1: Mosaico Escalonado por Horas (Sizing Dinámico para Todos los Juegos)
+        // Determina el número de columnas dinámicamente según la cantidad de juegos
+        function getDynamicColumns(count) {
+            if (count <= 30) return 4;
+            if (count <= 80) return 6;
+            if (count <= 200) return 8;
+            if (count <= 500) return 12;
+            return 16;
+        }
+
         function renderProportional(games) {
             if (games.length === 0) return;
 
+            canvas.width = 1800; // Ancho base ampliado para colecciones grandes
             const maxPlaytime = games[0].playtime_forever || 1;
             const padding = 30;
-            const gap = 12;
+            const gap = 10;
             const maxWidth = canvas.width - (padding * 2);
 
             let x = padding;
@@ -216,13 +237,13 @@
             let rowMaxHeight = 0;
             const itemsToDraw = [];
 
+            // Factor de escala dinámico según cantidad total
+            const baseCardWidth = games.length > 300 ? 320 : 500;
+
             games.forEach((game) => {
-                // Relación suave usando raíz cuadrada de las horas acumuladas
                 const ratio = Math.sqrt(game.playtime_forever / maxPlaytime);
-                
-                // Ancho de portada dinámico entre 100px y 540px
-                let w = Math.max(100, Math.min(maxWidth, 540 * ratio));
-                let h = w * 0.462; // Relación de aspecto oficial de Steam (460x215)
+                let w = Math.max(60, Math.min(maxWidth, baseCardWidth * ratio));
+                let h = w * 0.462;
 
                 if (x + w > canvas.width - padding) {
                     x = padding;
@@ -236,11 +257,9 @@
                 if (h > rowMaxHeight) rowMaxHeight = h;
             });
 
-            // Ajustar automáticamente la altura del Canvas para que quepan TODOS los juegos sin cortes
             const calculatedHeight = y + rowMaxHeight + padding;
-            canvas.height = Math.max(1000, calculatedHeight);
+            canvas.height = Math.max(1000, Math.min(10000, calculatedHeight));
 
-            // Redibujar fondo y tarjetas
             ctx.fillStyle = "#0e141b";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -250,15 +269,19 @@
         }
 
         function renderGrid(games) {
-            const cols = 4;
-            const padding = 40;
-            const gap = 15;
+            if (games.length === 0) return;
+
+            const cols = getDynamicColumns(games.length);
+            canvas.width = cols >= 12 ? 2200 : 1600;
+
+            const padding = 30;
+            const gap = 10;
 
             const itemWidth = (canvas.width - (padding * 2) - (gap * (cols - 1))) / cols;
             const itemHeight = itemWidth * 0.462;
 
             const rows = Math.ceil(games.length / cols);
-            canvas.height = Math.max(1000, (padding * 2) + (rows * (itemHeight + gap)));
+            canvas.height = Math.max(800, Math.min(10000, (padding * 2) + (rows * (itemHeight + gap))));
 
             ctx.fillStyle = "#0e141b";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -277,22 +300,23 @@
         function renderHero(games) {
             if (games.length === 0) return;
 
-            const padding = 40;
-            const gap = 15;
+            canvas.width = 1600;
+            const padding = 30;
+            const gap = 10;
 
             const topGame = games[0];
             const heroWidth = canvas.width - (padding * 2);
             const heroHeight = heroWidth * 0.462;
 
             const subGames = games.slice(1);
-            const cols = 4;
-            const startY = padding + heroHeight + 25;
+            const cols = getDynamicColumns(subGames.length);
+            const startY = padding + heroHeight + 20;
 
             const itemWidth = (canvas.width - (padding * 2) - (gap * (cols - 1))) / cols;
             const itemHeight = itemWidth * 0.462;
 
             const rows = Math.ceil(subGames.length / cols);
-            canvas.height = Math.max(1000, startY + (rows * (itemHeight + gap)) + padding);
+            canvas.height = Math.max(800, Math.min(10000, startY + (rows * (itemHeight + gap)) + padding));
 
             ctx.fillStyle = "#0a0f14";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -310,9 +334,19 @@
             });
         }
 
-        function generateArt() {
-            if (loadedGames.length === 0) return;
+        async function processAndRender() {
+            if (rawUserGames.length === 0) return;
 
+            const limitVal = document.getElementById('limit-select').value;
+            let filtered = rawUserGames;
+
+            if (limitVal !== 'all') {
+                const limitNum = parseInt(limitVal, 10);
+                filtered = rawUserGames.slice(0, limitNum);
+            }
+
+            loadedGames = await loadGameImages(filtered);
+            
             const style = document.getElementById('style-select').value;
             statusEl.textContent = "Dibujando póster...";
 
@@ -324,7 +358,8 @@
             }, 50);
         }
 
-        document.getElementById('style-select').addEventListener('change', generateArt);
+        document.getElementById('style-select').addEventListener('change', processAndRender);
+        document.getElementById('limit-select').addEventListener('change', processAndRender);
 
         document.getElementById('btn-fetch').addEventListener('click', async () => {
             const userInput = document.getElementById('steam-input').value.trim();
@@ -334,7 +369,7 @@
                 return;
             }
 
-            statusEl.textContent = "Consultando perfil a través del servidor seguro...";
+            statusEl.textContent = "Consultando perfil...";
 
             try {
                 const response = await fetch(`${WORKER_URL}?user=${encodeURIComponent(userInput)}`);
@@ -346,18 +381,16 @@
                 }
 
                 if (data.response && data.response.games) {
-                    // Filtrar solo juegos jugados (> 0 minutos) y ordenar por horas
-                    const userGames = data.response.games
+                    rawUserGames = data.response.games
                         .filter(g => g.playtime_forever > 0)
                         .sort((a, b) => b.playtime_forever - a.playtime_forever);
 
-                    if (userGames.length === 0) {
+                    if (rawUserGames.length === 0) {
                         statusEl.textContent = "No se encontraron juegos jugados en esta cuenta.";
                         return;
                     }
 
-                    loadedGames = await loadGameImages(userGames);
-                    generateArt();
+                    await processAndRender();
                 } else {
                     statusEl.textContent = "El perfil o la lista de juegos son PRIVADOS.";
                 }
