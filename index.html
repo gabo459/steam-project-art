@@ -3,319 +3,460 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GameDex – Buscador con Cloudflare KV Cache</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <title>Steam Library Poster Showcase</title>
     <style>
         :root {
-            --bg-dark: #0F172A;
-            --card-bg: #1E293B;
-            --accent-purple: #8B5CF6;
-            --accent-green: #10B981;
-            --accent-cyan: #06B6D4;
-            --text-main: #F8FAFC;
-            --text-muted: #94A3B8;
-            --border-color: #334155;
-            --radius: 16px;
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
+            --bg-color: #0e141b;
+            --panel-bg: #1b2838;
+            --accent-color: #66c0f4;
+            --accent-green: #10b981;
+            --text-color: #f3f3f3;
         }
 
         body {
-            font-family: 'Inter', system-ui, sans-serif;
-            background-color: var(--bg-dark);
-            color: var(--text-main);
-            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #sidebar {
+            width: 320px;
+            background-color: var(--panel-bg);
+            padding: 20px;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
             display: flex;
             flex-direction: column;
-            align-items: center;
-            padding: 2rem 1rem;
+            gap: 15px;
+            z-index: 10;
+            overflow-y: auto;
         }
 
-        .container {
-            width: 100%;
-            max-width: 800px;
-        }
-
-        header {
-            text-align: center;
-            margin-bottom: 2.5rem;
-        }
-
-        header h1 {
-            font-size: 2.5rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 0.5rem;
-        }
-
-        header p {
-            color: var(--text-muted);
-            font-size: 1rem;
-        }
-
-        /* SEARCH FORM */
-        .search-box {
-            display: flex;
-            gap: 0.75rem;
-            margin-bottom: 2rem;
-            background-color: var(--card-bg);
-            padding: 0.5rem;
-            border-radius: var(--radius);
-            border: 1px solid var(--border-color);
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
-        }
-
-        .search-box input {
-            flex: 1;
-            background: transparent;
-            border: none;
-            outline: none;
-            padding: 0.8rem 1rem;
-            color: var(--text-main);
-            font-size: 1rem;
-        }
-
-        .search-box button {
-            background: linear-gradient(135deg, var(--accent-purple), #7C3AED);
-            color: white;
-            border: none;
-            padding: 0.8rem 1.75rem;
-            border-radius: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .search-box button:hover {
-            opacity: 0.9;
-            transform: translateY(-1px);
-        }
-
-        /* RESULT CARD */
-        .game-card {
-            background-color: var(--card-bg);
-            border-radius: var(--radius);
-            border: 1px solid var(--border-color);
-            overflow: hidden;
-            display: none;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
-            animation: fadeIn 0.4s ease;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .card-banner {
-            width: 100%;
-            height: 280px;
-            object-fit: cover;
-            background-color: #000;
-        }
-
-        .card-body {
-            padding: 2rem;
-        }
-
-        .badge-source {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.4rem 0.9rem;
-            border-radius: 50px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            margin-bottom: 1rem;
+        h1 {
+            font-size: 1.2rem;
+            color: var(--accent-color);
+            margin-top: 0;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 1px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        label {
+            font-size: 0.85rem;
+            color: #acb2b8;
+        }
+
+        input, select, button {
+            background: #101822;
+            border: 1px solid #2a475e;
+            color: #fff;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        button {
+            background: linear-gradient(90deg, #47bfff 0%, #1a9fff 100%);
+            border: none;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.2s;
+            margin-top: 5px;
+        }
+
+        button:hover { opacity: 0.9; }
+        button:active { transform: scale(0.98); }
+        .btn-secondary { background: #2a475e; }
+
+        .notice-box {
+            background-color: rgba(102, 192, 244, 0.08);
+            border: 1px solid #2a475e;
+            border-left: 3px solid var(--accent-color);
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            color: #acb2b8;
+            line-height: 1.4;
+        }
+
+        .notice-box strong { color: var(--accent-color); }
+
+        #canvas-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            background-color: #05080c;
+            overflow: auto;
+        }
+
+        canvas {
+            max-width: 95%;
+            max-height: 95%;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
+            border-radius: 4px;
+            background: #0e141b;
+        }
+
+        #status {
+            font-size: 0.8rem;
+            color: #66c0f4;
+            min-height: 20px;
+            line-height: 1.4;
         }
 
         .badge-cache {
-            background-color: rgba(16, 185, 129, 0.15);
             color: var(--accent-green);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-        }
-
-        .badge-api {
-            background-color: rgba(6, 182, 212, 0.15);
-            color: var(--accent-cyan);
-            border: 1px solid rgba(6, 182, 212, 0.3);
-        }
-
-        .game-title {
-            font-size: 2rem;
-            font-weight: 700;
-            margin-bottom: 1rem;
-        }
-
-        .game-meta {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 1.5rem;
-            margin-bottom: 1.5rem;
-            color: var(--text-muted);
-            font-size: 0.95rem;
-        }
-
-        .meta-item span {
-            color: var(--text-main);
-            font-weight: 600;
-        }
-
-        .genres {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-
-        .tag {
-            background-color: var(--bg-dark);
-            padding: 0.3rem 0.8rem;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            border: 1px solid var(--border-color);
-        }
-
-        /* STATUS MESSAGES */
-        .status-msg {
-            text-align: center;
-            padding: 3rem 1rem;
-            color: var(--text-muted);
-            display: none;
-        }
-
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 4px solid var(--border-color);
-            border-top-color: var(--accent-purple);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            margin: 0 auto 1rem auto;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <header>
-            <h1>GameDex Cache Engine</h1>
-            <p>Buscador inteligente impulsado por Cloudflare Workers & KV</p>
-        </header>
-
-        <!-- FORMULARIO DE BÚSQUEDA -->
-        <form class="search-box" id="searchForm">
-            <input type="text" id="searchInput" placeholder="Escribe el nombre de un juego (ej: Zelda, Witcher, Halo)..." required>
-            <button type="submit">Buscar</button>
-        </form>
-
-        <!-- MENSAJE DE CARGA / ERROR -->
-        <div id="statusMsg" class="status-msg">
-            <div class="spinner" id="loadingSpinner"></div>
-            <p id="statusText">Buscando en la base de datos local...</p>
+    <div id="sidebar">
+        <h1>Steam Library Poster</h1>
+        
+        <div class="control-group">
+            <label for="style-select">Diseño del Mural:</label>
+            <select id="style-select">
+                <option value="proportional">Escala Logarítmica Suave (Recomendado)</option>
+                <option value="hero">Top 1 Destacado + Galería</option>
+                <option value="grid">Mural Uniforme (Grid)</option>
+            </select>
         </div>
 
-        <!-- TARJETA DEL JUEGO -->
-        <article class="game-card" id="gameCard">
-            <img id="gameImg" class="card-banner" src="" alt="Banner del juego">
-            <div class="card-body">
-                <div id="sourceBadge" class="badge-source"></div>
-                <h2 id="gameTitle" class="game-title"></h2>
-                <div class="game-meta">
-                    <div class="meta-item">Lanzamiento: <span id="gameRelease"></span></div>
-                    <div class="meta-item">Calificación: <span id="gameRating"></span> ⭐</div>
-                </div>
-                <div class="genres" id="gameGenres"></div>
-            </div>
-        </article>
+        <div class="control-group">
+            <label for="limit-select">Cantidad de Juegos:</label>
+            <select id="limit-select">
+                <option value="25" selected>Top 25 más jugados</option>
+                <option value="20">Top 20 más jugados</option>
+                <option value="15">Top 15 más jugados</option>
+                <option value="10">Top 10 más jugados</option>
+                <option value="5">Top 5 más jugados</option>
+                <option value="50">Top 50 más jugados</option>
+                <option value="100">Top 100 más jugados</option>
+                <option value="250">Top 250 más jugados</option>
+                <option value="500">Top 500 más jugados</option>
+                <option value="all">Todos los jugados (>0h)</option>
+            </select>
+        </div>
+
+        <hr style="border: 0.5px solid #2a475e; width: 100%;">
+
+        <div class="notice-box">
+            <strong>Requisito de Privacidad:</strong> El perfil de Steam y la opción <em>"Detalles de los juegos"</em> deben estar configurados como <strong>Públicos</strong>.
+        </div>
+
+        <div class="control-group">
+            <label for="steam-input">Perfil o URL de Steam:</label>
+            <input type="text" id="steam-input" placeholder="Ej: https://steamcommunity.com/id/usuario">
+        </div>
+
+        <button id="btn-fetch">Generar Póster</button>
+        <button id="btn-download" class="btn-secondary">Descargar Póster (PNG)</button>
+
+        <div id="status">Ingresa un perfil para comenzar.</div>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="art-canvas" width="1200" height="1200"></canvas>
     </div>
 
     <script>
-        // ⚠️ REEMPLAZA ESTA URL CON LA URL OFICIAL DE TU CLOUDFLARE WORKER
-        const WORKER_URL = "https://api-juegos.TU-SUBDOMINIO.workers.dev";
+        // URL DE TU CLOUDFLARE WORKER
+        const WORKER_URL = "https://steamproxy.ernestoygabo.workers.dev/";
 
-        const form = document.getElementById('searchForm');
-        const input = document.getElementById('searchInput');
-        const card = document.getElementById('gameCard');
-        const statusMsg = document.getElementById('statusMsg');
-        const statusText = document.getElementById('statusText');
-        const spinner = document.getElementById('loadingSpinner');
+        const canvas = document.getElementById('art-canvas');
+        const ctx = canvas.getContext('2d');
+        const statusEl = document.getElementById('status');
 
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const query = input.value.trim();
-            if (!query) return;
+        let rawUserGames = [];
+        let loadedGames = [];
 
-            // Mostrar estado de carga
-            card.style.display = 'none';
-            statusMsg.style.display = 'block';
-            spinner.style.display = 'block';
-            statusText.textContent = `Consultando base de datos para "${query}"...`;
+        function getCorsImageUrl(appid) {
+            const rawUrl = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`;
+            return `https://wsrv.nl/?url=${encodeURIComponent(rawUrl)}&output=jpg`;
+        }
 
-            try {
-                const response = await fetch(`${WORKER_URL}?juego=${encodeURIComponent(query)}`);
-                const data = await response.json();
+        async function loadGameImages(games) {
+            statusEl.textContent = `Cargando portadas de ${games.length} juegos...`;
+            
+            const imagePromises = games.map((game) => {
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    img.crossOrigin = "anonymous";
 
-                if (!response.ok) {
-                    throw new Error(data.error || 'Juego no encontrado.');
+                    img.onload = () => resolve({ ...game, img });
+                    img.onerror = () => resolve({ ...game, img: null });
+                    
+                    img.src = getCorsImageUrl(game.appid);
+                });
+            });
+
+            return Promise.all(imagePromises);
+        }
+
+        function drawCard(game, x, y, w, h) {
+            if (game.img) {
+                ctx.drawImage(game.img, x, y, w, h);
+            } else {
+                ctx.fillStyle = "#1b2838";
+                ctx.fillRect(x, y, w, h);
+                ctx.fillStyle = "#66c0f4";
+                ctx.font = "bold 11px Segoe UI, sans-serif";
+                ctx.fillText(game.name || `App ${game.appid}`, x + 5, y + h / 2);
+            }
+            ctx.strokeStyle = "#2a475e";
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(x, y, w, h);
+        }
+
+        function getDynamicColumns(count) {
+            if (count <= 5) return 2;
+            if (count <= 10) return 3;
+            if (count <= 25) return 5;
+            if (count <= 50) return 6;
+            if (count <= 100) return 8;
+            if (count <= 250) return 10;
+            if (count <= 500) return 12;
+            return 16;
+        }
+
+        function renderProportional(games) {
+            if (games.length === 0) return;
+
+            const count = games.length;
+            
+            if (count <= 5) canvas.width = 1000;
+            else if (count <= 15) canvas.width = 1200;
+            else if (count <= 50) canvas.width = 1500;
+            else canvas.width = 1800;
+
+            const padding = 30;
+            const gap = 12;
+            const maxWidth = canvas.width - (padding * 2);
+
+            const maxPlaytime = games[0].playtime_forever || 1;
+            const minPlaytime = games[games.length - 1].playtime_forever || 1;
+
+            const logMax = Math.log10(maxPlaytime + 1);
+            const logMin = Math.log10(minPlaytime + 1);
+            const logDiff = logMax - logMin || 1;
+
+            let maxCardWidth;
+            if (count <= 5) maxCardWidth = maxWidth * 0.48;
+            else if (count <= 15) maxCardWidth = maxWidth * 0.38;
+            else if (count <= 30) maxCardWidth = maxWidth * 0.28;
+            else maxCardWidth = maxWidth * 0.22;
+
+            let x = padding;
+            let y = padding;
+            let rowMaxHeight = 0;
+            const itemsToDraw = [];
+
+            games.forEach((game) => {
+                const currentLog = Math.log10((game.playtime_forever || 1) + 1);
+                const normalizedRatio = (currentLog - logMin) / logDiff;
+                
+                const scaleFactor = 0.45 + (0.55 * normalizedRatio);
+
+                let w = Math.max(80, Math.min(maxWidth, maxCardWidth * scaleFactor));
+                let h = w * 0.462;
+
+                if (x + w > canvas.width - padding + 2) {
+                    x = padding;
+                    y += rowMaxHeight + gap;
+                    rowMaxHeight = 0;
                 }
 
-                // Identificar el origen del caché a través de los headers devueltos por el Worker
-                const sourceHeader = response.headers.get('X-Source');
-                mostrarJuego(data, sourceHeader);
+                itemsToDraw.push({ game, x, y, w, h });
 
+                x += w + gap;
+                if (h > rowMaxHeight) rowMaxHeight = h;
+            });
+
+            canvas.height = y + rowMaxHeight + padding;
+
+            ctx.fillStyle = "#0e141b";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            itemsToDraw.forEach(item => {
+                drawCard(item.game, item.x, item.y, item.w, item.h);
+            });
+        }
+
+        function renderGrid(games) {
+            if (games.length === 0) return;
+
+            const count = games.length;
+            const cols = getDynamicColumns(count);
+            
+            if (count <= 10) canvas.width = 1000;
+            else if (count <= 25) canvas.width = 1200;
+            else if (count <= 100) canvas.width = 1600;
+            else canvas.width = 2000;
+
+            const padding = 30;
+            const gap = 12;
+
+            const itemWidth = (canvas.width - (padding * 2) - (gap * (cols - 1))) / cols;
+            const itemHeight = itemWidth * 0.462;
+
+            const rows = Math.ceil(games.length / cols);
+            canvas.height = (padding * 2) + (rows * (itemHeight + gap)) - gap;
+
+            ctx.fillStyle = "#0e141b";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            games.forEach((game, index) => {
+                const col = index % cols;
+                const row = Math.floor(index / cols);
+
+                const x = padding + col * (itemWidth + gap);
+                const y = padding + row * (itemHeight + gap);
+
+                drawCard(game, x, y, itemWidth, itemHeight);
+            });
+        }
+
+        function renderHero(games) {
+            if (games.length === 0) return;
+
+            const count = games.length;
+            if (count <= 10) canvas.width = 1000;
+            else if (count <= 25) canvas.width = 1200;
+            else canvas.width = 1600;
+
+            const padding = 30;
+            const gap = 12;
+
+            const topGame = games[0];
+            const heroWidth = canvas.width - (padding * 2);
+            const heroHeight = heroWidth * 0.462;
+
+            const subGames = games.slice(1);
+
+            if (subGames.length === 0) {
+                canvas.height = (padding * 2) + heroHeight;
+                ctx.fillStyle = "#0a0f14";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                drawCard(topGame, padding, padding, heroWidth, heroHeight);
+                return;
+            }
+
+            const cols = getDynamicColumns(subGames.length);
+            const startY = padding + heroHeight + gap;
+
+            const itemWidth = (canvas.width - (padding * 2) - (gap * (cols - 1))) / cols;
+            const itemHeight = itemWidth * 0.462;
+
+            const rows = Math.ceil(subGames.length / cols);
+            canvas.height = startY + (rows * (itemHeight + gap)) + padding - gap;
+
+            ctx.fillStyle = "#0a0f14";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawCard(topGame, padding, padding, heroWidth, heroHeight);
+
+            subGames.forEach((game, index) => {
+                const col = index % cols;
+                const row = Math.floor(index / cols);
+
+                const x = padding + col * (itemWidth + gap);
+                const y = startY + row * (itemHeight + gap);
+
+                drawCard(game, x, y, itemWidth, itemHeight);
+            });
+        }
+
+        async function processAndRender() {
+            if (rawUserGames.length === 0) return;
+
+            const limitVal = document.getElementById('limit-select').value;
+            let filtered = rawUserGames;
+
+            if (limitVal !== 'all') {
+                const limitNum = parseInt(limitVal, 10);
+                filtered = rawUserGames.slice(0, limitNum);
+            }
+
+            loadedGames = await loadGameImages(filtered);
+            
+            const style = document.getElementById('style-select').value;
+            statusEl.textContent = "Dibujando póster...";
+
+            setTimeout(() => {
+                if (style === 'proportional') renderProportional(loadedGames);
+                else if (style === 'grid') renderGrid(loadedGames);
+                else if (style === 'hero') renderHero(loadedGames);
+                statusEl.innerHTML = `¡Póster renderizado con ${loadedGames.length} juegos!`;
+            }, 50);
+        }
+
+        document.getElementById('style-select').addEventListener('change', processAndRender);
+        document.getElementById('limit-select').addEventListener('change', processAndRender);
+
+        document.getElementById('btn-fetch').addEventListener('click', async () => {
+            const userInput = document.getElementById('steam-input').value.trim();
+
+            if (!userInput) {
+                alert("Por favor ingresa la URL o usuario de Steam.");
+                return;
+            }
+
+            statusEl.textContent = "Consultando perfil mediante Cloudflare Worker...";
+
+            try {
+                const response = await fetch(`${WORKER_URL}?user=${encodeURIComponent(userInput)}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    statusEl.textContent = `Error: ${data.error}`;
+                    return;
+                }
+
+                if (data.response && data.response.games) {
+                    rawUserGames = data.response.games
+                        .filter(g => g.playtime_forever > 0)
+                        .sort((a, b) => b.playtime_forever - a.playtime_forever);
+
+                    if (rawUserGames.length === 0) {
+                        statusEl.textContent = "No se encontraron juegos jugados en esta cuenta.";
+                        return;
+                    }
+
+                    await processAndRender();
+                } else {
+                    statusEl.textContent = "El perfil o la lista de juegos son PRIVADOS.";
+                }
             } catch (err) {
-                spinner.style.display = 'none';
-                statusText.textContent = `❌ ${err.message}`;
+                console.error(err);
+                statusEl.textContent = "Error al conectar con el servidor proxy de Cloudflare.";
             }
         });
 
-        function mostrarJuego(juego, fuente) {
-            statusMsg.style.display = 'none';
-
-            // Renderizar Banner e Información
-            document.getElementById('gameImg').src = juego.imagen || 'https://via.placeholder.com/800x400?text=Sin+Imagen';
-            document.getElementById('gameTitle').textContent = juego.nombre;
-            document.getElementById('gameRelease').textContent = juego.lanzamiento || 'N/A';
-            document.getElementById('gameRating').textContent = juego.rating || 'N/A';
-
-            // Renderizar Géneros
-            const genresContainer = document.getElementById('gameGenres');
-            genresContainer.innerHTML = '';
-            if (juego.generos && juego.generos.length > 0) {
-                juego.generos.forEach(g => {
-                    const tag = document.createElement('span');
-                    tag.className = 'tag';
-                    tag.textContent = g;
-                    genresContainer.appendChild(tag);
-                });
-            }
-
-            // Renderizar Badge de Origen de Datos (Caché KV vs API Externa)
-            const badge = document.getElementById('sourceBadge');
-            if (fuente === 'KV-Cache') {
-                badge.className = 'badge-source badge-cache';
-                badge.innerHTML = '⚡ Servido desde Cloudflare KV (Caché Local)';
-            } else {
-                badge.className = 'badge-source badge-api';
-                badge.innerHTML = '🌐 Obtenido de API Externa (Guardado en KV)';
-            }
-
-            card.style.display = 'block';
-        }
+        document.getElementById('btn-download').addEventListener('click', () => {
+            const link = document.createElement('a');
+            link.download = 'steam-library-poster.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        });
     </script>
 </body>
 </html>
