@@ -54,7 +54,7 @@
             color: #acb2b8;
         }
 
-        select, button {
+        input, select, button {
             background: #101822;
             border: 1px solid #2a475e;
             color: #fff;
@@ -63,7 +63,7 @@
             font-size: 0.9rem;
         }
 
-        select:focus {
+        input:focus, select:focus {
             outline: none;
             border-color: var(--accent-color);
         }
@@ -81,6 +81,19 @@
         button:hover { opacity: 0.9; }
         button:active { transform: scale(0.98); }
         .btn-secondary { background: #2a475e; }
+
+        .notice-box {
+            background-color: rgba(102, 192, 244, 0.08);
+            border: 1px solid #2a475e;
+            border-left: 3px solid var(--accent-color);
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            color: #acb2b8;
+            line-height: 1.4;
+        }
+
+        .notice-box strong { color: var(--accent-color); }
 
         #canvas-container {
             flex: 1;
@@ -122,10 +135,19 @@
 
         <hr style="border: 0.5px solid #2a475e; width: 100%;">
 
-        <button id="btn-reload" style="background: #2e7d32;">Actualizar Vista</button>
+        <div class="notice-box">
+            <strong>Requisito de Privacidad:</strong> El perfil de Steam y la opción <em>"Detalles de los juegos"</em> deben estar configurados como <strong>Públicos</strong>.
+        </div>
+
+        <div class="control-group">
+            <label for="steam-input">Perfil o URL de Steam:</label>
+            <input type="text" id="steam-input" placeholder="Ej: https://steamcommunity.com/id/usuario">
+        </div>
+
+        <button id="btn-fetch">Generar Póster</button>
         <button id="btn-download" class="btn-secondary">Descargar Póster (PNG)</button>
 
-        <div id="status">Cargando datos...</div>
+        <div id="status">Ingresa un perfil para comenzar.</div>
     </div>
 
     <div id="canvas-container">
@@ -133,24 +155,36 @@
     </div>
 
     <script>
+        // PEGA AQUÍ LA URL DE TU CLOUDFLARE WORKER
+        const WORKER_URL = "https://steamproxy.ernestoygabo.workers.dev/";
+
         const canvas = document.getElementById('art-canvas');
         const ctx = canvas.getContext('2d');
         const statusEl = document.getElementById('status');
 
         let loadedGames = [];
 
+        function getCorsImageUrl(appid) {
+            const rawUrl = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`;
+            return `https://wsrv.nl/?url=${encodeURIComponent(rawUrl)}&output=jpg`;
+        }
+
         async function loadGameImages(games) {
-            statusEl.textContent = "Procesando portadas...";
-            const promises = games.map(game => {
+            statusEl.textContent = "Cargando portadas de juegos...";
+            
+            const imagePromises = games.map((game) => {
                 return new Promise((resolve) => {
-                    if (!game.imageBase64) return resolve({ ...game, img: null });
                     const img = new Image();
+                    img.crossOrigin = "anonymous";
+
                     img.onload = () => resolve({ ...game, img });
                     img.onerror = () => resolve({ ...game, img: null });
-                    img.src = game.imageBase64;
+                    
+                    img.src = getCorsImageUrl(game.appid);
                 });
             });
-            return Promise.all(promises);
+
+            return Promise.all(imagePromises);
         }
 
         function drawCard(game, x, y, w, h) {
@@ -252,6 +286,7 @@
 
         function generateArt() {
             if (loadedGames.length === 0) return;
+
             const style = document.getElementById('style-select').value;
             statusEl.textContent = "Dibujando póster...";
 
@@ -259,30 +294,43 @@
                 if (style === 'grid') renderGrid(loadedGames);
                 else if (style === 'hero') renderHero(loadedGames);
                 else if (style === 'proportional') renderProportional(loadedGames);
-                statusEl.textContent = "¡Póster cargado!";
+                statusEl.textContent = "¡Póster renderizado con éxito!";
             }, 50);
         }
 
-        async function fetchRepoJSON() {
-            statusEl.textContent = "Cargando librería...";
+        document.getElementById('style-select').addEventListener('change', generateArt);
+
+        document.getElementById('btn-fetch').addEventListener('click', async () => {
+            const userInput = document.getElementById('steam-input').value.trim();
+
+            if (!userInput) {
+                alert("Por favor ingresa la URL o usuario de Steam.");
+                return;
+            }
+
+            statusEl.textContent = "Consultando perfil a través del servidor seguro...";
+
             try {
-                const response = await fetch('./steam_games.json?v=' + new Date().getTime());
-                if (!response.ok) {
-                    statusEl.textContent = "No se encontró steam_games.json. Ejecuta la Action en GitHub.";
+                const response = await fetch(`${WORKER_URL}?user=${encodeURIComponent(userInput)}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    statusEl.textContent = `Error: ${data.error}`;
                     return;
                 }
-                const gamesData = await response.json();
-                loadedGames = await loadGameImages(gamesData);
-                generateArt();
+
+                if (data.response && data.response.games) {
+                    const userGames = data.response.games.sort((a, b) => b.playtime_forever - a.playtime_forever);
+                    loadedGames = await loadGameImages(userGames.slice(0, 24));
+                    generateArt();
+                } else {
+                    statusEl.textContent = "El perfil o la lista de juegos son PRIVADOS.";
+                }
             } catch (err) {
                 console.error(err);
-                statusEl.textContent = "Error al leer los datos de la librería.";
+                statusEl.textContent = "Error al conectar con el servidor proxy.";
             }
-        }
-
-        window.addEventListener('DOMContentLoaded', fetchRepoJSON);
-        document.getElementById('btn-reload').addEventListener('click', fetchRepoJSON);
-        document.getElementById('style-select').addEventListener('change', generateArt);
+        });
 
         document.getElementById('btn-download').addEventListener('click', () => {
             const link = document.createElement('a');
