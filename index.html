@@ -209,6 +209,29 @@
             return hours.toLocaleString() + ' hrs';
         }
 
+        function getOptimalWidth(count) {
+            if (count <= 10) return 1000;
+            if (count <= 25) return 1200;
+            if (count <= 50) return 1500;
+            if (count <= 100) return 1800;
+            if (count <= 250) return 2200;
+            if (count <= 500) return 2600;
+            if (count <= 1000) return 3000;
+            return 3400;
+        }
+
+        function getOptimalColumns(count) {
+            if (count <= 5) return 3;
+            if (count <= 10) return 4;
+            if (count <= 25) return 5;
+            if (count <= 50) return 7;
+            if (count <= 100) return 10;
+            if (count <= 250) return 14;
+            if (count <= 500) return 20;
+            if (count <= 1000) return 28;
+            return Math.min(36, Math.round(Math.sqrt(count * 0.75)));
+        }
+
         function setupCanvas(width, height) {
             const dpr = window.devicePixelRatio || 1;
             canvas.width = width * dpr;
@@ -225,19 +248,26 @@
 
         async function loadAvatarImage(url) {
             if (!url) return null;
-            return new Promise((resolve) => {
-                const img = new Image();
-                img.crossOrigin = "anonymous";
-                img.onload = () => resolve(img);
-                img.onerror = () => {
-                    const fallbackImg = new Image();
-                    fallbackImg.crossOrigin = "anonymous";
-                    fallbackImg.onload = () => resolve(fallbackImg);
-                    fallbackImg.onerror = () => resolve(null);
-                    fallbackImg.src = url;
-                };
-                img.src = `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=jpg`;
-            });
+            
+            const sources = [
+                url,
+                `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=jpg`,
+                `https://images.weserv.nl/?url=${encodeURIComponent(url)}`
+            ];
+
+            for (let src of sources) {
+                try {
+                    const img = await new Promise((resolve, reject) => {
+                        const i = new Image();
+                        i.crossOrigin = "anonymous";
+                        i.onload = () => resolve(i);
+                        i.onerror = () => reject();
+                        i.src = src;
+                    });
+                    if (img && img.naturalWidth > 0) return img;
+                } catch (e) {}
+            }
+            return null;
         }
 
         async function loadGameImages(games) {
@@ -262,7 +292,7 @@
             if (!userProfile) return 0;
 
             const padding = 35;
-            const avatarSize = 75;
+            const avatarSize = Math.max(90, Math.round(logicalWidth * 0.055));
             const headerHeight = avatarSize + 30;
 
             const avatarX = padding;
@@ -274,16 +304,21 @@
             ctx.closePath();
             ctx.clip();
 
-            if (userProfile.avatarImg) {
+            if (userProfile.avatarImg && userProfile.avatarImg.naturalWidth > 0) {
                 ctx.drawImage(userProfile.avatarImg, avatarX, avatarY, avatarSize, avatarSize);
             } else {
-                ctx.fillStyle = "#1b2838";
+                const grad = ctx.createLinearGradient(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize);
+                grad.addColorStop(0, "#2a475e");
+                grad.addColorStop(1, "#1b2838");
+                ctx.fillStyle = grad;
                 ctx.fillRect(avatarX, avatarY, avatarSize, avatarSize);
+
                 ctx.fillStyle = "#66c0f4";
-                ctx.font = "bold 24px 'Segoe UI', sans-serif";
+                ctx.font = `bold ${Math.round(avatarSize * 0.45)}px 'Segoe UI', sans-serif`;
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
-                ctx.fillText(userProfile.name.charAt(0).toUpperCase(), avatarX + avatarSize / 2, avatarY + avatarSize / 2);
+                const initial = (userProfile.name || "S").charAt(0).toUpperCase();
+                ctx.fillText(initial, avatarX + avatarSize / 2, avatarY + avatarSize / 2);
             }
             ctx.restore();
 
@@ -291,25 +326,27 @@
             ctx.beginPath();
             ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
             ctx.strokeStyle = "#66c0f4";
-            ctx.lineWidth = 3;
+            ctx.lineWidth = Math.max(2, Math.round(avatarSize * 0.04));
             ctx.stroke();
             ctx.restore();
 
-            const textX = avatarX + avatarSize + 20;
+            const textX = avatarX + avatarSize + Math.round(avatarSize * 0.25);
+            const titleFontSize = Math.max(24, Math.round(avatarSize * 0.38));
+            const statsFontSize = Math.max(14, Math.round(avatarSize * 0.2));
 
             ctx.fillStyle = "#ffffff";
-            ctx.font = "bold 28px 'Segoe UI', sans-serif";
+            ctx.font = `bold ${titleFontSize}px 'Segoe UI', sans-serif`;
             ctx.textAlign = "left";
             ctx.textBaseline = "top";
-            ctx.fillText(userProfile.name, textX, avatarY + 8);
+            ctx.fillText(userProfile.name, textX, avatarY + Math.round(avatarSize * 0.1));
 
             ctx.fillStyle = "#acb2b8";
-            ctx.font = "15px 'Segoe UI', sans-serif";
+            ctx.font = `${statsFontSize}px 'Segoe UI', sans-serif`;
             const statsText = `${userProfile.totalGames} juegos • ${userProfile.totalHours.toLocaleString()} horas jugadas en total`;
-            ctx.fillText(statsText, textX, avatarY + 44);
+            ctx.fillText(statsText, textX, avatarY + Math.round(avatarSize * 0.55));
 
             ctx.strokeStyle = "#2a475e";
-            ctx.lineWidth = 1;
+            ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.moveTo(padding, avatarY + headerHeight - 10);
             ctx.lineTo(logicalWidth - padding, avatarY + headerHeight - 10);
@@ -329,7 +366,7 @@
                 ctx.shadowOffsetY = 4;
             } else {
                 ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-                ctx.shadowBlur = 8;
+                ctx.shadowBlur = 6;
                 ctx.shadowOffsetY = 2;
             }
 
@@ -349,12 +386,12 @@
                 ctx.drawImage(game.img, x, y, w, h);
             } else {
                 ctx.fillStyle = "#66c0f4";
-                ctx.font = `bold ${Math.max(9, w * 0.09)}px Segoe UI, sans-serif`;
-                ctx.fillText(game.name || `App ${game.appid}`, x + 5, y + h / 2);
+                ctx.font = `bold ${Math.max(8, w * 0.09)}px Segoe UI, sans-serif`;
+                ctx.fillText(game.name || `App ${game.appid}`, x + 4, y + h / 2);
             }
 
-            if (w >= 50) {
-                const gradHeight = Math.max(25, h * 0.28);
+            if (w >= 45) {
+                const gradHeight = Math.max(20, h * 0.28);
                 const grad = ctx.createLinearGradient(x, y + h - gradHeight, x, y + h);
                 grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
                 grad.addColorStop(1, 'rgba(0, 0, 0, 0.9)');
@@ -384,15 +421,12 @@
             if (games.length === 0) return;
 
             const count = games.length;
-            let logicalWidth = 1400;
-            
-            if (count <= 10) logicalWidth = 1000;
-            else if (count <= 25) logicalWidth = 1200;
-            else if (count >= 100) logicalWidth = 1800;
+            const logicalWidth = getOptimalWidth(count);
+            const cols = getOptimalColumns(count);
 
             const padding = 35;
             const gap = 12;
-            const headerHeight = userProfile ? 120 : 0;
+            const headerHeight = userProfile ? Math.max(120, Math.round(logicalWidth * 0.08)) : 0;
             const maxWidth = logicalWidth - (padding * 2);
 
             const maxPlaytime = games[0].playtime_forever || 1;
@@ -406,7 +440,7 @@
             if (count <= 5) maxCardWidth = maxWidth * 0.32;
             else if (count <= 15) maxCardWidth = maxWidth * 0.22;
             else if (count <= 50) maxCardWidth = maxWidth * 0.15;
-            else maxCardWidth = maxWidth * 0.11;
+            else maxCardWidth = (maxWidth / cols) * 1.25;
 
             let x = padding;
             let y = padding + headerHeight;
@@ -418,7 +452,7 @@
                 const normalizedRatio = (currentLog - logMin) / logDiff;
                 const scaleFactor = 0.55 + (0.45 * normalizedRatio);
 
-                let w = Math.max(80, Math.min(maxWidth, maxCardWidth * scaleFactor));
+                let w = Math.max(50, Math.min(maxWidth, maxCardWidth * scaleFactor));
                 let h = w * ASPECT_RATIO;
 
                 if (x + w > logicalWidth - padding + 2) {
@@ -446,21 +480,12 @@
             if (games.length === 0) return;
 
             const count = games.length;
-            let logicalWidth = 1400;
-            if (count <= 10) logicalWidth = 1000;
-            else if (count <= 25) logicalWidth = 1200;
-            else if (count >= 100) logicalWidth = 1800;
+            const logicalWidth = getOptimalWidth(count);
+            const cols = getOptimalColumns(count);
 
             const padding = 35;
             const gap = 12;
-            const headerHeight = userProfile ? 120 : 0;
-
-            let targetCardWidth = 130;
-            if (count > 100) targetCardWidth = 105;
-            if (count > 300) targetCardWidth = 90;
-
-            let cols = Math.floor((logicalWidth - (padding * 2) + gap) / (targetCardWidth + gap));
-            cols = Math.max(3, Math.min(cols, 16));
+            const headerHeight = userProfile ? Math.max(120, Math.round(logicalWidth * 0.08)) : 0;
 
             const itemWidth = (logicalWidth - (padding * 2) - (gap * (cols - 1))) / cols;
             const itemHeight = itemWidth * ASPECT_RATIO;
@@ -486,14 +511,11 @@
             if (games.length === 0) return;
 
             const count = games.length;
-            let logicalWidth = 1400;
-            if (count <= 10) logicalWidth = 1000;
-            else if (count <= 25) logicalWidth = 1200;
-            else if (count >= 100) logicalWidth = 1800;
+            const logicalWidth = getOptimalWidth(count);
 
             const padding = 35;
             const gap = 12;
-            const headerHeight = userProfile ? 120 : 0;
+            const headerHeight = userProfile ? Math.max(120, Math.round(logicalWidth * 0.08)) : 0;
 
             const topGame = games[0];
             const heroWidth = Math.min(420, (logicalWidth - (padding * 2) - gap) * 0.38);
@@ -510,11 +532,7 @@
             }
 
             const subAreaWidth = logicalWidth - padding - (padding + heroWidth + gap);
-            let targetCardWidth = 120;
-            if (count > 100) targetCardWidth = 95;
-
-            let cols = Math.floor((subAreaWidth + gap) / (targetCardWidth + gap));
-            cols = Math.max(2, Math.min(cols, 12));
+            const cols = Math.max(2, getOptimalColumns(subGames.length) - 2);
 
             const startY = padding + headerHeight;
 
