@@ -292,7 +292,22 @@
         if (game.img_icon_url) {
             sources.push(`https://media.steampowered.com/steamcommunity/public/images/apps/${appid}/${game.img_icon_url}.jpg`);
         }
-    
+
+        // Si las URLs nativas de Steam fallan, consultar SteamGridDB vía tu Worker
+        const sgdbRes = await fetch(`${WORKER_URL}?sgdb_appid=${appid}&orientation=${orientation}`);
+        const sgdbData = await sgdbRes.json();
+        
+        if (sgdbData.url) {
+            const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(sgdbData.url)}&output=webp&q=75`;
+            const img = await new Promise((resolve, reject) => {
+                const i = new Image();
+                i.crossOrigin = "anonymous";
+                i.onload = () => resolve(i);
+                i.onerror = () => reject();
+                i.src = proxyUrl;
+            });
+            if (img && img.naturalWidth > 0) return img;
+        }
         // Probar cada fuente a través del proxy
         for (const rawUrl of sources) {
             const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(rawUrl)}&output=webp&q=75`;
