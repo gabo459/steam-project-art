@@ -272,9 +272,36 @@
 
         async function fetchGameImageWithFallback(game, orientation) {
         const appid = game.appid;
+        const cacheKey = `steam_poster_img_${appid}_${orientation}`;
+        const TTL_MS = 7 * 24 * 60 * 60 * 1000; // Tiempo de vida: 7 días en milisegundos
+    
+        // 1. REVISAR SI LA ENTRADA EN CACHÉ SIGUE VÍGENTE
+        const cachedRaw = localStorage.getItem(cacheKey);
+        if (cachedRaw) {
+            try {
+                const cached = JSON.parse(cachedRaw);
+                const isExpired = (Date.now() - cached.timestamp) > TTL_MS;
+    
+                if (!isExpired && cached.url) {
+                    const img = await new Promise((resolve, reject) => {
+                        const i = new Image();
+                        i.crossOrigin = "anonymous";
+                        i.onload = () => resolve(i);
+                        i.onerror = () => reject();
+                        i.src = cached.url;
+                    });
+                    if (img && img.naturalWidth > 0) return img;
+                } else {
+                    localStorage.removeItem(cacheKey); // Registro expirado
+                }
+            } catch (e) {
+                localStorage.removeItem(cacheKey); // Limpiar si había formato plano antiguo
+            }
+        }
+    
         let steamSources = [];
     
-        // 1. Portadas oficiales de la tienda de Steam
+        // 2. Portadas oficiales de la tienda de Steam
         if (orientation === 'horizontal') {
             steamSources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`);
             steamSources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/capsule_616x353.jpg`);
@@ -285,7 +312,7 @@
             steamSources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/capsule_616x353.jpg`);
         }
     
-        // Probar las portadas oficiales de la tienda
+        // Probar las fuentes de Steam
         for (const rawUrl of steamSources) {
             const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(rawUrl)}&output=webp&q=75`;
             try {
@@ -296,11 +323,14 @@
                     i.onerror = () => reject();
                     i.src = proxyUrl;
                 });
-                if (img && img.naturalWidth > 0) return img;
+                if (img && img.naturalWidth > 0) {
+                    saveToCache(cacheKey, proxyUrl);
+                    return img;
+                }
             } catch (e) {}
         }
     
-        // 2. IR DIRECTO A STEAMGRIDDB (se omiten logos e iconos)
+        // 3. RESPALDO EN STEAMGRIDDB (vía Worker)
         try {
             const sgdbRes = await fetch(`${WORKER_URL}?sgdb_appid=${appid}&orientation=${orientation}`);
             if (sgdbRes.ok) {
@@ -314,7 +344,10 @@
                         i.onerror = () => reject();
                         i.src = proxyUrl;
                     });
-                    if (img && img.naturalWidth > 0) return img;
+                    if (img && img.naturalWidth > 0) {
+                        saveToCache(cacheKey, proxyUrl);
+                        return img;
+                    }
                 }
             }
         } catch (e) {
@@ -322,6 +355,19 @@
         }
     
         return null;
+    }
+    
+    // Función auxiliar para empaquetar la URL con la marca de tiempo
+    function saveToCache(key, url) {
+        try {
+            const cacheData = {
+                url: url,
+                timestamp: Date.now()
+            };
+            localStorage.setItem(key, JSON.stringify(cacheData));
+        } catch (e) {
+            console.warn("No se pudo guardar en localStorage (espacio insuficiente).", e);
+        }
     }
     
     async function loadGameImages(games) {
