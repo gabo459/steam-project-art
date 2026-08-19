@@ -54,7 +54,7 @@
             color: #acb2b8;
         }
 
-        input, select, button {
+        select, button {
             background: #101822;
             border: 1px solid #2a475e;
             color: #fff;
@@ -63,7 +63,7 @@
             font-size: 0.9rem;
         }
 
-        input:focus, select:focus {
+        select:focus {
             outline: none;
             border-color: var(--accent-color);
         }
@@ -122,28 +122,10 @@
 
         <hr style="border: 0.5px solid #2a475e; width: 100%;">
 
-        <button id="btn-load-repo" style="background: #2e7d32;">Cargar desde GitHub (JSON)</button>
-
-        <hr style="border: 0.5px solid #2a475e; width: 100%;">
-
-        <div class="control-group">
-            <label for="steam-id">Steam ID64:</label>
-            <input type="text" id="steam-id" placeholder="Ej: 76561198000000000">
-        </div>
-
-        <div class="control-group">
-            <label for="api-key">Steam Web API Key:</label>
-            <input type="password" id="api-key" placeholder="Tu clave de API de Steam">
-        </div>
-
-        <button id="btn-fetch">Consultar API de Steam</button>
-        <button id="btn-export-json" class="btn-secondary" style="display:none;">Guardar Librería a JSON</button>
-        
-        <hr style="border: 0.5px solid #2a475e; width: 100%;">
-
+        <button id="btn-reload" style="background: #2e7d32;">Actualizar Vista</button>
         <button id="btn-download" class="btn-secondary">Descargar Póster (PNG)</button>
 
-        <div id="status">Iniciando...</div>
+        <div id="status">Cargando datos...</div>
     </div>
 
     <div id="canvas-container">
@@ -157,98 +139,18 @@
 
         let loadedGames = [];
 
-        // Función con consulta segura defensiva a la API de Steam mediante proxies alternativos
-        async function fetchSteamApiData(steamId, apiKey) {
-            const rawSteamUrl = `https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamId}&format=json&include_appinfo=true`;
-            
-            const proxyConfigs = [
-                {
-                    url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(rawSteamUrl)}`,
-                    parse: (text) => JSON.parse(text)
-                },
-                {
-                    url: `https://corsproxy.io/?${encodeURIComponent(rawSteamUrl)}`,
-                    parse: (text) => JSON.parse(text)
-                },
-                {
-                    url: `https://api.allorigins.win/get?url=${encodeURIComponent(rawSteamUrl)}`,
-                    parse: (text) => {
-                        const wrapper = JSON.parse(text);
-                        return JSON.parse(wrapper.contents);
-                    }
-                }
-            ];
-
-            for (const config of proxyConfigs) {
-                try {
-                    statusEl.textContent = "Consultando datos de Steam...";
-                    const res = await fetch(config.url);
-                    if (!res.ok) continue;
-
-                    const text = await res.text();
-                    if (!text || text.trim().length === 0) continue;
-
-                    const parsedData = config.parse(text);
-                    if (parsedData && parsedData.response) {
-                        return parsedData;
-                    }
-                } catch (e) {
-                    console.warn(`Falló el proxy: ${config.url}`, e);
-                }
-            }
-
-            throw new Error("Todos los proxies de red fallaron o fueron bloqueados.");
-        }
-
-        // Servicio especializado CDN wsrv.nl para imágenes con cabeceras CORS
-        function getCorsImageUrl(appid) {
-            const rawUrl = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`;
-            return `https://wsrv.nl/?url=${encodeURIComponent(rawUrl)}&output=jpg`;
-        }
-
-        function imageToBase64(img) {
-            if (!img) return null;
-            try {
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = img.naturalWidth || img.width || 460;
-                tempCanvas.height = img.naturalHeight || img.height || 215;
-                const tempCtx = tempCanvas.getContext('2d');
-                tempCtx.drawImage(img, 0, 0);
-                return tempCanvas.toDataURL('image/jpeg', 0.85);
-            } catch (e) {
-                return null;
-            }
-        }
-
         async function loadGameImages(games) {
-            statusEl.textContent = "Cargando portadas de juegos...";
-            
-            const imagePromises = games.map((game) => {
+            statusEl.textContent = "Procesando portadas...";
+            const promises = games.map(game => {
                 return new Promise((resolve) => {
+                    if (!game.imageBase64) return resolve({ ...game, img: null });
                     const img = new Image();
-                    img.crossOrigin = "anonymous";
-
-                    if (game.imageBase64) {
-                        img.onload = () => resolve({ ...game, img });
-                        img.onerror = () => resolve({ ...game, img: null });
-                        img.src = game.imageBase64;
-                        return;
-                    }
-
                     img.onload = () => resolve({ ...game, img });
-                    img.onerror = () => {
-                        const fallbackImg = new Image();
-                        fallbackImg.crossOrigin = "anonymous";
-                        fallbackImg.onload = () => resolve({ ...game, img: fallbackImg });
-                        fallbackImg.onerror = () => resolve({ ...game, img: null });
-                        fallbackImg.src = `https://wsrv.nl/?url=${encodeURIComponent(`https://cdn.cloudflare.steamstatic.com/steam/apps/${game.appid}/header.jpg`)}`;
-                    };
-                    
-                    img.src = getCorsImageUrl(game.appid);
+                    img.onerror = () => resolve({ ...game, img: null });
+                    img.src = game.imageBase64;
                 });
             });
-
-            return Promise.all(imagePromises);
+            return Promise.all(promises);
         }
 
         function drawCard(game, x, y, w, h) {
@@ -350,7 +252,6 @@
 
         function generateArt() {
             if (loadedGames.length === 0) return;
-
             const style = document.getElementById('style-select').value;
             statusEl.textContent = "Dibujando póster...";
 
@@ -358,83 +259,30 @@
                 if (style === 'grid') renderGrid(loadedGames);
                 else if (style === 'hero') renderHero(loadedGames);
                 else if (style === 'proportional') renderProportional(loadedGames);
-                statusEl.textContent = "¡Póster renderizado con éxito!";
+                statusEl.textContent = "¡Póster cargado!";
             }, 50);
         }
 
         async function fetchRepoJSON() {
-            statusEl.textContent = "Buscando steam_games.json...";
+            statusEl.textContent = "Cargando librería...";
             try {
-                const response = await fetch('./steam_games.json');
+                const response = await fetch('./steam_games.json?v=' + new Date().getTime());
                 if (!response.ok) {
-                    statusEl.textContent = "No se encontró steam_games.json en el repositorio.";
+                    statusEl.textContent = "No se encontró steam_games.json. Ejecuta la Action en GitHub.";
                     return;
                 }
-                const rawText = await response.text();
-                if (!rawText || rawText.trim() === "") {
-                    statusEl.textContent = "El archivo steam_games.json está vacío.";
-                    return;
-                }
-                const gamesData = JSON.parse(rawText);
+                const gamesData = await response.json();
                 loadedGames = await loadGameImages(gamesData);
                 generateArt();
             } catch (err) {
                 console.error(err);
-                statusEl.textContent = "Error de lectura en steam_games.json.";
+                statusEl.textContent = "Error al leer los datos de la librería.";
             }
         }
 
         window.addEventListener('DOMContentLoaded', fetchRepoJSON);
-
-        document.getElementById('btn-load-repo').addEventListener('click', fetchRepoJSON);
+        document.getElementById('btn-reload').addEventListener('click', fetchRepoJSON);
         document.getElementById('style-select').addEventListener('change', generateArt);
-
-        document.getElementById('btn-fetch').addEventListener('click', async () => {
-            const steamId = document.getElementById('steam-id').value.trim();
-            const apiKey = document.getElementById('api-key').value.trim();
-
-            if (!steamId || !apiKey) {
-                alert("Por favor ingresa tu Steam ID64 y tu Web API Key.");
-                return;
-            }
-
-            try {
-                const data = await fetchSteamApiData(steamId, apiKey);
-                
-                if (data.response && data.response.games) {
-                    const userGames = data.response.games.sort((a, b) => b.playtime_forever - a.playtime_forever);
-                    loadedGames = await loadGameImages(userGames.slice(0, 24));
-                    document.getElementById('btn-export-json').style.display = 'block';
-                    generateArt();
-                } else {
-                    statusEl.textContent = "Error: Perfil privado o datos no encontrados.";
-                }
-            } catch (err) {
-                console.error(err);
-                statusEl.textContent = "Error de red: Los proxies fallaron en conectar con Steam.";
-            }
-        });
-
-        document.getElementById('btn-export-json').addEventListener('click', () => {
-            if (loadedGames.length === 0) return;
-
-            statusEl.textContent = "Generando JSON con imágenes...";
-            const cacheData = loadedGames.map(game => ({
-                appid: game.appid,
-                name: game.name,
-                playtime_forever: game.playtime_forever,
-                imageBase64: imageToBase64(game.img)
-            }));
-
-            const blob = new Blob([JSON.stringify(cacheData, null, 2)], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'steam_games.json';
-            a.click();
-            URL.revokeObjectURL(url);
-            statusEl.textContent = "JSON descargado. Reemplázalo en tu repositorio GitHub.";
-        });
 
         document.getElementById('btn-download').addEventListener('click', () => {
             const link = document.createElement('a');
