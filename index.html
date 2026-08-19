@@ -272,44 +272,21 @@
 
         async function fetchGameImageWithFallback(game, orientation) {
         const appid = game.appid;
-        let sources = [];
+        let steamSources = [];
     
-        // 1. Portadas estándar de la tienda
+        // 1. Portadas oficiales de la tienda de Steam
         if (orientation === 'horizontal') {
-            sources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`);
-            sources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/capsule_616x353.jpg`);
-            sources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`);
+            steamSources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`);
+            steamSources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/capsule_616x353.jpg`);
+            steamSources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`);
         } else {
-            sources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`);
-            sources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`);
-            sources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/capsule_616x353.jpg`);
+            steamSources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`);
+            steamSources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`);
+            steamSources.push(`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/capsule_616x353.jpg`);
         }
     
-        // 2. Iconos e imágenes comunitarias del perfil (proporcionadas por la API)
-        if (game.img_logo_url) {
-            sources.push(`https://media.steampowered.com/steamcommunity/public/images/apps/${appid}/${game.img_logo_url}.jpg`);
-        }
-        if (game.img_icon_url) {
-            sources.push(`https://media.steampowered.com/steamcommunity/public/images/apps/${appid}/${game.img_icon_url}.jpg`);
-        }
-
-        // Si las URLs nativas de Steam fallan, consultar SteamGridDB vía tu Worker
-        const sgdbRes = await fetch(`${WORKER_URL}?sgdb_appid=${appid}&orientation=${orientation}`);
-        const sgdbData = await sgdbRes.json();
-        
-        if (sgdbData.url) {
-            const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(sgdbData.url)}&output=webp&q=75`;
-            const img = await new Promise((resolve, reject) => {
-                const i = new Image();
-                i.crossOrigin = "anonymous";
-                i.onload = () => resolve(i);
-                i.onerror = () => reject();
-                i.src = proxyUrl;
-            });
-            if (img && img.naturalWidth > 0) return img;
-        }
-        // Probar cada fuente a través del proxy
-        for (const rawUrl of sources) {
+        // Probar las portadas oficiales de la tienda
+        for (const rawUrl of steamSources) {
             const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(rawUrl)}&output=webp&q=75`;
             try {
                 const img = await new Promise((resolve, reject) => {
@@ -322,6 +299,28 @@
                 if (img && img.naturalWidth > 0) return img;
             } catch (e) {}
         }
+    
+        // 2. IR DIRECTO A STEAMGRIDDB (se omiten logos e iconos)
+        try {
+            const sgdbRes = await fetch(`${WORKER_URL}?sgdb_appid=${appid}&orientation=${orientation}`);
+            if (sgdbRes.ok) {
+                const sgdbData = await sgdbRes.json();
+                if (sgdbData.url) {
+                    const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(sgdbData.url)}&output=webp&q=75`;
+                    const img = await new Promise((resolve, reject) => {
+                        const i = new Image();
+                        i.crossOrigin = "anonymous";
+                        i.onload = () => resolve(i);
+                        i.onerror = () => reject();
+                        i.src = proxyUrl;
+                    });
+                    if (img && img.naturalWidth > 0) return img;
+                }
+            }
+        } catch (e) {
+            console.warn(`No se pudo obtener portada de SteamGridDB para AppID ${appid}:`, e);
+        }
+    
         return null;
     }
     
