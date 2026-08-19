@@ -275,21 +275,53 @@
             return null;
         }
 
-        async function loadGameImages(games) {
-            statusEl.textContent = `Descargando imágenes optimizadas (${games.length})...`;
-            
-            const imagePromises = games.map((game) => {
-                return new Promise((resolve) => {
-                    const img = new Image();
-                    img.crossOrigin = "anonymous";
-                    img.onload = () => resolve({ ...game, img });
-                    img.onerror = () => resolve({ ...game, img: null });
-                    img.src = getCorsImageUrl(game.appid);
-                });
-            });
-
-            return Promise.all(imagePromises);
+        // Carga la imagen intentando múltiples formatos de portada antes de rendirse
+        async function fetchGameImageWithFallback(appid) {
+            const sources = [
+                `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`,
+                `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`,
+                `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/capsule_616x353.jpg`
+            ];
+        
+            for (const rawUrl of sources) {
+                const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(rawUrl)}&output=webp&q=75`;
+                try {
+                    const img = await new Promise((resolve, reject) => {
+                        const i = new Image();
+                        i.crossOrigin = "anonymous";
+                        i.onload = () => resolve(i);
+                        i.onerror = () => reject();
+                        i.src = proxyUrl;
+                    });
+                    if (img && img.naturalWidth > 0) return img;
+                } catch (e) {
+                    // Continúa probando el siguiente formato si falla
+                }
+            }
+            return null;
         }
+        
+        // Procesa las descargas en bloques (lotes) para no saturar la red ni el servidor proxy
+        async function loadGameImages(games) {
+            const BATCH_SIZE = 30; // Descarga de 30 en 30
+            const results = [];
+        
+            for (let i = 0; i < games.length; i += BATCH_SIZE) {
+                const batch = games.slice(i, i + BATCH_SIZE);
+                statusEl.textContent = `Descargando portadas (${Math.min(i + BATCH_SIZE, games.length)} de ${games.length})...`;
+                
+                const batchPromises = batch.map(async (game) => {
+                    const img = await fetchGameImageWithFallback(game.appid);
+                    return { ...game, img };
+                });
+        
+                const batchResults = await Promise.all(batchPromises);
+                results.push(...batchResults);
+            }
+        
+            return results;
+        }
+        
 
         function drawHeader(logicalWidth) {
             if (!userProfile) return 0;
