@@ -102,11 +102,11 @@
             align-items: center;
             padding: 20px;
             background-color: #05080c;
+            overflow: auto;
         }
 
         canvas {
             max-width: 95%;
-            max-height: 95%;
             box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
             border-radius: 4px;
             background: #0e141b;
@@ -127,9 +127,9 @@
         <div class="control-group">
             <label for="style-select">Diseño del Mural:</label>
             <select id="style-select">
+                <option value="proportional">Mosaico Escala por Horas (Todos)</option>
                 <option value="hero">Top 1 Destacado + Galería</option>
-                <option value="grid">Mural de Colección (Grid)</option>
-                <option value="proportional">Mosaico Simétrico por Horas</option>
+                <option value="grid">Mural Uniforme (Grid)</option>
             </select>
         </div>
 
@@ -156,7 +156,7 @@
 
     <script>
         // PEGA AQUÍ LA URL DE TU CLOUDFLARE WORKER
-        const WORKER_URL = "https://steamproxy.ernestoygabo.workers.dev/";
+        const WORKER_URL = "https://steam-proxy.tu-usuario.workers.dev";
 
         const canvas = document.getElementById('art-canvas');
         const ctx = canvas.getContext('2d');
@@ -170,7 +170,7 @@
         }
 
         async function loadGameImages(games) {
-            statusEl.textContent = "Cargando portadas de juegos...";
+            statusEl.textContent = `Cargando portadas de ${games.length} juegos...`;
             
             const imagePromises = games.map((game) => {
                 return new Promise((resolve) => {
@@ -194,24 +194,74 @@
                 ctx.fillStyle = "#1b2838";
                 ctx.fillRect(x, y, w, h);
                 ctx.fillStyle = "#66c0f4";
-                ctx.font = "bold 13px Segoe UI, sans-serif";
-                ctx.fillText(game.name || `App ${game.appid}`, x + 10, y + h / 2);
+                ctx.font = "bold 12px Segoe UI, sans-serif";
+                ctx.fillText(game.name || `App ${game.appid}`, x + 8, y + h / 2);
             }
             ctx.strokeStyle = "#2a475e";
             ctx.lineWidth = 2;
             ctx.strokeRect(x, y, w, h);
         }
 
-        function renderGrid(games) {
+        // Diseño 1: Mosaico Escalonado por Horas (Sizing Dinámico para Todos los Juegos)
+        function renderProportional(games) {
+            if (games.length === 0) return;
+
+            const maxPlaytime = games[0].playtime_forever || 1;
+            const padding = 30;
+            const gap = 12;
+            const maxWidth = canvas.width - (padding * 2);
+
+            let x = padding;
+            let y = padding;
+            let rowMaxHeight = 0;
+            const itemsToDraw = [];
+
+            games.forEach((game) => {
+                // Relación suave usando raíz cuadrada de las horas acumuladas
+                const ratio = Math.sqrt(game.playtime_forever / maxPlaytime);
+                
+                // Ancho de portada dinámico entre 100px y 540px
+                let w = Math.max(100, Math.min(maxWidth, 540 * ratio));
+                let h = w * 0.462; // Relación de aspecto oficial de Steam (460x215)
+
+                if (x + w > canvas.width - padding) {
+                    x = padding;
+                    y += rowMaxHeight + gap;
+                    rowMaxHeight = 0;
+                }
+
+                itemsToDraw.push({ game, x, y, w, h });
+
+                x += w + gap;
+                if (h > rowMaxHeight) rowMaxHeight = h;
+            });
+
+            // Ajustar automáticamente la altura del Canvas para que quepan TODOS los juegos sin cortes
+            const calculatedHeight = y + rowMaxHeight + padding;
+            canvas.height = Math.max(1000, calculatedHeight);
+
+            // Redibujar fondo y tarjetas
             ctx.fillStyle = "#0e141b";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+            itemsToDraw.forEach(item => {
+                drawCard(item.game, item.x, item.y, item.w, item.h);
+            });
+        }
+
+        function renderGrid(games) {
             const cols = 4;
             const padding = 40;
-            const gap = 20;
+            const gap = 15;
 
             const itemWidth = (canvas.width - (padding * 2) - (gap * (cols - 1))) / cols;
-            const itemHeight = itemWidth * 0.46;
+            const itemHeight = itemWidth * 0.462;
+
+            const rows = Math.ceil(games.length / cols);
+            canvas.height = Math.max(1000, (padding * 2) + (rows * (itemHeight + gap)));
+
+            ctx.fillStyle = "#0e141b";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             games.forEach((game, index) => {
                 const col = index % cols;
@@ -220,15 +270,11 @@
                 const x = padding + col * (itemWidth + gap);
                 const y = padding + row * (itemHeight + gap);
 
-                if (y + itemHeight > canvas.height - padding) return;
                 drawCard(game, x, y, itemWidth, itemHeight);
             });
         }
 
         function renderHero(games) {
-            ctx.fillStyle = "#0a0f14";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
             if (games.length === 0) return;
 
             const padding = 40;
@@ -236,16 +282,22 @@
 
             const topGame = games[0];
             const heroWidth = canvas.width - (padding * 2);
-            const heroHeight = heroWidth * 0.45;
-
-            drawCard(topGame, padding, padding, heroWidth, heroHeight);
+            const heroHeight = heroWidth * 0.462;
 
             const subGames = games.slice(1);
             const cols = 4;
-            const startY = padding + heroHeight + 30;
+            const startY = padding + heroHeight + 25;
 
             const itemWidth = (canvas.width - (padding * 2) - (gap * (cols - 1))) / cols;
-            const itemHeight = itemWidth * 0.46;
+            const itemHeight = itemWidth * 0.462;
+
+            const rows = Math.ceil(subGames.length / cols);
+            canvas.height = Math.max(1000, startY + (rows * (itemHeight + gap)) + padding);
+
+            ctx.fillStyle = "#0a0f14";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawCard(topGame, padding, padding, heroWidth, heroHeight);
 
             subGames.forEach((game, index) => {
                 const col = index % cols;
@@ -254,33 +306,7 @@
                 const x = padding + col * (itemWidth + gap);
                 const y = startY + row * (itemHeight + gap);
 
-                if (y + itemHeight > canvas.height - padding) return;
                 drawCard(game, x, y, itemWidth, itemHeight);
-            });
-        }
-
-        function renderProportional(games) {
-            ctx.fillStyle = "#0e141b";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            const total = games.reduce((acc, g) => acc + (g.playtime_forever || 10), 0);
-            let x = 30, y = 30;
-            const maxWidth = canvas.width - 60;
-
-            games.forEach((game) => {
-                const ratio = (game.playtime_forever || 10) / total;
-                const w = Math.max(140, Math.min(maxWidth, Math.sqrt(maxWidth * canvas.height * ratio * 1.5)));
-                const h = w * 0.46;
-
-                if (x + w > canvas.width - 30) {
-                    x = 30;
-                    y += h + 15;
-                }
-
-                if (y + h > canvas.height - 30) return;
-
-                drawCard(game, x, y, w, h);
-                x += w + 15;
             });
         }
 
@@ -291,10 +317,10 @@
             statusEl.textContent = "Dibujando póster...";
 
             setTimeout(() => {
-                if (style === 'grid') renderGrid(loadedGames);
+                if (style === 'proportional') renderProportional(loadedGames);
+                else if (style === 'grid') renderGrid(loadedGames);
                 else if (style === 'hero') renderHero(loadedGames);
-                else if (style === 'proportional') renderProportional(loadedGames);
-                statusEl.textContent = "¡Póster renderizado con éxito!";
+                statusEl.textContent = `¡Póster renderizado con ${loadedGames.length} juegos!`;
             }, 50);
         }
 
@@ -320,8 +346,17 @@
                 }
 
                 if (data.response && data.response.games) {
-                    const userGames = data.response.games.sort((a, b) => b.playtime_forever - a.playtime_forever);
-                    loadedGames = await loadGameImages(userGames.slice(0, 24));
+                    // Filtrar solo juegos jugados (> 0 minutos) y ordenar por horas
+                    const userGames = data.response.games
+                        .filter(g => g.playtime_forever > 0)
+                        .sort((a, b) => b.playtime_forever - a.playtime_forever);
+
+                    if (userGames.length === 0) {
+                        statusEl.textContent = "No se encontraron juegos jugados en esta cuenta.";
+                        return;
+                    }
+
+                    loadedGames = await loadGameImages(userGames);
                     generateArt();
                 } else {
                     statusEl.textContent = "El perfil o la lista de juegos son PRIVADOS.";
