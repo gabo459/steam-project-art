@@ -109,8 +109,8 @@
         canvas {
             max-width: 95%;
             max-height: 95%;
-            box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
-            border-radius: 4px;
+            box-shadow: 0 0 35px rgba(0, 0, 0, 0.9);
+            border-radius: 6px;
             background: #0e141b;
         }
 
@@ -119,11 +119,6 @@
             color: #66c0f4;
             min-height: 20px;
             line-height: 1.4;
-        }
-
-        .badge-cache {
-            color: var(--accent-green);
-            font-weight: bold;
         }
     </style>
 </head>
@@ -179,7 +174,6 @@
     </div>
 
     <script>
-        // URL DE TU CLOUDFLARE WORKER
         const WORKER_URL = "https://steamproxy.ernestoygabo.workers.dev/";
 
         const canvas = document.getElementById('art-canvas');
@@ -188,10 +182,47 @@
 
         let rawUserGames = [];
         let loadedGames = [];
+        let userProfile = null;
+
+        const ASPECT_RATIO = 1.5;
 
         function getCorsImageUrl(appid) {
-            const rawUrl = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/header.jpg`;
+            const rawUrl = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`;
             return `https://wsrv.nl/?url=${encodeURIComponent(rawUrl)}&output=jpg`;
+        }
+
+        function formatPlaytime(minutes) {
+            if (!minutes || minutes <= 0) return '0 hrs';
+            const hours = Math.round(minutes / 60);
+            if (hours >= 1000) {
+                return (hours / 1000).toFixed(1) + 'k hrs';
+            }
+            return hours.toLocaleString() + ' hrs';
+        }
+
+        function setupCanvas(width, height) {
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            canvas.style.width = `${width}px`;
+            canvas.style.height = `${height}px`;
+
+            ctx.resetTransform();
+            ctx.scale(dpr, dpr);
+
+            ctx.fillStyle = "#0e141b";
+            ctx.fillRect(0, 0, width, height);
+        }
+
+        async function loadAvatarImage(url) {
+            if (!url) return null;
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.crossOrigin = "anonymous";
+                img.onload = () => resolve(img);
+                img.onerror = () => resolve(null);
+                img.src = `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=jpg`;
+            });
         }
 
         async function loadGameImages(games) {
@@ -212,45 +243,150 @@
             return Promise.all(imagePromises);
         }
 
-        function drawCard(game, x, y, w, h) {
+        function drawHeader(logicalWidth) {
+            if (!userProfile) return 0;
+
+            const padding = 35;
+            const avatarSize = 75;
+            const headerHeight = avatarSize + 30;
+
+            const avatarX = padding;
+            const avatarY = padding;
+
+            // Dibujar Avatar Circular
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
+            ctx.closePath();
+            ctx.clip();
+
+            if (userProfile.avatarImg) {
+                ctx.drawImage(userProfile.avatarImg, avatarX, avatarY, avatarSize, avatarSize);
+            } else {
+                ctx.fillStyle = "#1b2838";
+                ctx.fillRect(avatarX, avatarY, avatarSize, avatarSize);
+            }
+            ctx.restore();
+
+            // Anillo de Borde para el Avatar
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
+            ctx.strokeStyle = "#66c0f4";
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.restore();
+
+            // Textos del Perfil
+            const textX = avatarX + avatarSize + 20;
+
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 28px 'Segoe UI', sans-serif";
+            ctx.textBaseline = "top";
+            ctx.fillText(userProfile.name, textX, avatarY + 8);
+
+            ctx.fillStyle = "#acb2b8";
+            ctx.font = "15px 'Segoe UI', sans-serif";
+            const statsText = `${userProfile.totalGames} juegos • ${userProfile.totalHours.toLocaleString()} horas jugadas en total`;
+            ctx.fillText(statsText, textX, avatarY + 44);
+
+            // Línea Divisoria Decorativa
+            ctx.strokeStyle = "#2a475e";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(padding, avatarY + headerHeight - 10);
+            ctx.lineTo(logicalWidth - padding, avatarY + headerHeight - 10);
+            ctx.stroke();
+
+            return headerHeight + 15;
+        }
+
+        function drawCard(game, x, y, w, h, rank = 0) {
+            ctx.save();
+
+            const radius = Math.min(8, w * 0.06);
+
+            if (rank > 0 && rank <= 3) {
+                ctx.shadowColor = 'rgba(102, 192, 244, 0.45)';
+                ctx.shadowBlur = 18;
+                ctx.shadowOffsetY = 4;
+            } else {
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+                ctx.shadowBlur = 10;
+                ctx.shadowOffsetY = 3;
+            }
+
+            ctx.beginPath();
+            if (ctx.roundRect) {
+                ctx.roundRect(x, y, w, h, radius);
+            } else {
+                ctx.rect(x, y, w, h);
+            }
+            ctx.fillStyle = "#1b2838";
+            ctx.fill();
+
+            ctx.save();
+            ctx.clip();
+
             if (game.img) {
                 ctx.drawImage(game.img, x, y, w, h);
             } else {
-                ctx.fillStyle = "#1b2838";
-                ctx.fillRect(x, y, w, h);
                 ctx.fillStyle = "#66c0f4";
-                ctx.font = "bold 11px Segoe UI, sans-serif";
-                ctx.fillText(game.name || `App ${game.appid}`, x + 5, y + h / 2);
+                ctx.font = `bold ${Math.max(10, w * 0.09)}px Segoe UI, sans-serif`;
+                ctx.fillText(game.name || `App ${game.appid}`, x + 8, y + h / 2);
             }
-            ctx.strokeStyle = "#2a475e";
-            ctx.lineWidth = 1.5;
-            ctx.strokeRect(x, y, w, h);
+
+            const gradHeight = Math.max(35, h * 0.28);
+            const grad = ctx.createLinearGradient(x, y + h - gradHeight, x, y + h);
+            grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+            grad.addColorStop(1, 'rgba(0, 0, 0, 0.88)');
+
+            ctx.fillStyle = grad;
+            ctx.fillRect(x, y + h - gradHeight, w, gradHeight);
+
+            const hoursText = formatPlaytime(game.playtime_forever);
+            const fontSize = Math.max(9, Math.min(13, w * 0.085));
+            ctx.fillStyle = "#f3f3f3";
+            ctx.font = `600 ${fontSize}px Segoe UI, sans-serif`;
+            ctx.textAlign = "right";
+            ctx.textBaseline = "bottom";
+            ctx.fillText(hoursText, x + w - (w * 0.06), y + h - (h * 0.04));
+
+            ctx.restore();
+
+            ctx.strokeStyle = (rank > 0 && rank <= 3) ? "rgba(102, 192, 244, 0.9)" : "rgba(42, 71, 94, 0.8)";
+            ctx.lineWidth = (rank > 0 && rank <= 3) ? 2 : 1.2;
+            ctx.stroke();
+
+            ctx.restore();
         }
 
         function getDynamicColumns(count) {
-            if (count <= 5) return 2;
-            if (count <= 10) return 3;
+            if (count <= 5) return 3;
+            if (count <= 10) return 4;
             if (count <= 25) return 5;
-            if (count <= 50) return 6;
-            if (count <= 100) return 8;
-            if (count <= 250) return 10;
-            if (count <= 500) return 12;
-            return 16;
+            if (count <= 50) return 7;
+            if (count <= 100) return 9;
+            if (count <= 250) return 12;
+            if (count <= 500) return 15;
+            return 18;
         }
 
         function renderProportional(games) {
             if (games.length === 0) return;
 
             const count = games.length;
+            let logicalWidth;
             
-            if (count <= 5) canvas.width = 1000;
-            else if (count <= 15) canvas.width = 1200;
-            else if (count <= 50) canvas.width = 1500;
-            else canvas.width = 1800;
+            if (count <= 5) logicalWidth = 1000;
+            else if (count <= 15) logicalWidth = 1200;
+            else if (count <= 50) logicalWidth = 1500;
+            else logicalWidth = 1800;
 
-            const padding = 30;
-            const gap = 12;
-            const maxWidth = canvas.width - (padding * 2);
+            const padding = 35;
+            const gap = 14;
+            const headerHeight = userProfile ? 120 : 0;
+            const maxWidth = logicalWidth - (padding * 2);
 
             const maxPlaytime = games[0].playtime_forever || 1;
             const minPlaytime = games[games.length - 1].playtime_forever || 1;
@@ -260,44 +396,42 @@
             const logDiff = logMax - logMin || 1;
 
             let maxCardWidth;
-            if (count <= 5) maxCardWidth = maxWidth * 0.48;
-            else if (count <= 15) maxCardWidth = maxWidth * 0.38;
-            else if (count <= 30) maxCardWidth = maxWidth * 0.28;
-            else maxCardWidth = maxWidth * 0.22;
+            if (count <= 5) maxCardWidth = maxWidth * 0.32;
+            else if (count <= 15) maxCardWidth = maxWidth * 0.24;
+            else if (count <= 30) maxCardWidth = maxWidth * 0.18;
+            else maxCardWidth = maxWidth * 0.14;
 
             let x = padding;
-            let y = padding;
+            let y = padding + headerHeight;
             let rowMaxHeight = 0;
             const itemsToDraw = [];
 
-            games.forEach((game) => {
+            games.forEach((game, index) => {
                 const currentLog = Math.log10((game.playtime_forever || 1) + 1);
                 const normalizedRatio = (currentLog - logMin) / logDiff;
-                
-                const scaleFactor = 0.45 + (0.55 * normalizedRatio);
+                const scaleFactor = 0.5 + (0.5 * normalizedRatio);
 
-                let w = Math.max(80, Math.min(maxWidth, maxCardWidth * scaleFactor));
-                let h = w * 0.462;
+                let w = Math.max(75, Math.min(maxWidth, maxCardWidth * scaleFactor));
+                let h = w * ASPECT_RATIO;
 
-                if (x + w > canvas.width - padding + 2) {
+                if (x + w > logicalWidth - padding + 2) {
                     x = padding;
                     y += rowMaxHeight + gap;
                     rowMaxHeight = 0;
                 }
 
-                itemsToDraw.push({ game, x, y, w, h });
+                itemsToDraw.push({ game, x, y, w, h, rank: index + 1 });
 
                 x += w + gap;
                 if (h > rowMaxHeight) rowMaxHeight = h;
             });
 
-            canvas.height = y + rowMaxHeight + padding;
-
-            ctx.fillStyle = "#0e141b";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            const logicalHeight = y + rowMaxHeight + padding;
+            setupCanvas(logicalWidth, logicalHeight);
+            drawHeader(logicalWidth);
 
             itemsToDraw.forEach(item => {
-                drawCard(item.game, item.x, item.y, item.w, item.h);
+                drawCard(item.game, item.x, item.y, item.w, item.h, item.rank);
             });
         }
 
@@ -307,31 +441,33 @@
             const count = games.length;
             const cols = getDynamicColumns(count);
             
-            if (count <= 10) canvas.width = 1000;
-            else if (count <= 25) canvas.width = 1200;
-            else if (count <= 100) canvas.width = 1600;
-            else canvas.width = 2000;
+            let logicalWidth;
+            if (count <= 10) logicalWidth = 1000;
+            else if (count <= 25) logicalWidth = 1200;
+            else if (count <= 100) logicalWidth = 1600;
+            else logicalWidth = 2000;
 
-            const padding = 30;
-            const gap = 12;
+            const padding = 35;
+            const gap = 14;
+            const headerHeight = userProfile ? 120 : 0;
 
-            const itemWidth = (canvas.width - (padding * 2) - (gap * (cols - 1))) / cols;
-            const itemHeight = itemWidth * 0.462;
+            const itemWidth = (logicalWidth - (padding * 2) - (gap * (cols - 1))) / cols;
+            const itemHeight = itemWidth * ASPECT_RATIO;
 
             const rows = Math.ceil(games.length / cols);
-            canvas.height = (padding * 2) + (rows * (itemHeight + gap)) - gap;
+            const logicalHeight = headerHeight + (padding * 2) + (rows * (itemHeight + gap)) - gap;
 
-            ctx.fillStyle = "#0e141b";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            setupCanvas(logicalWidth, logicalHeight);
+            drawHeader(logicalWidth);
 
             games.forEach((game, index) => {
                 const col = index % cols;
                 const row = Math.floor(index / cols);
 
                 const x = padding + col * (itemWidth + gap);
-                const y = padding + row * (itemHeight + gap);
+                const y = padding + headerHeight + row * (itemHeight + gap);
 
-                drawCard(game, x, y, itemWidth, itemHeight);
+                drawCard(game, x, y, itemWidth, itemHeight, index + 1);
             });
         }
 
@@ -339,49 +475,54 @@
             if (games.length === 0) return;
 
             const count = games.length;
-            if (count <= 10) canvas.width = 1000;
-            else if (count <= 25) canvas.width = 1200;
-            else canvas.width = 1600;
+            let logicalWidth;
+            if (count <= 10) logicalWidth = 1000;
+            else if (count <= 25) logicalWidth = 1200;
+            else logicalWidth = 1600;
 
-            const padding = 30;
-            const gap = 12;
+            const padding = 35;
+            const gap = 14;
+            const headerHeight = userProfile ? 120 : 0;
 
             const topGame = games[0];
-            const heroWidth = canvas.width - (padding * 2);
-            const heroHeight = heroWidth * 0.462;
+            const heroWidth = (logicalWidth - (padding * 2) - gap) * 0.42;
+            const heroHeight = heroWidth * ASPECT_RATIO;
 
             const subGames = games.slice(1);
 
             if (subGames.length === 0) {
-                canvas.height = (padding * 2) + heroHeight;
-                ctx.fillStyle = "#0a0f14";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                drawCard(topGame, padding, padding, heroWidth, heroHeight);
+                const logicalHeight = headerHeight + (padding * 2) + heroHeight;
+                setupCanvas(logicalWidth, logicalHeight);
+                drawHeader(logicalWidth);
+                drawCard(topGame, padding, padding + headerHeight, heroWidth, heroHeight, 1);
                 return;
             }
 
             const cols = getDynamicColumns(subGames.length);
-            const startY = padding + heroHeight + gap;
+            const startY = padding + headerHeight;
+            const subAreaWidth = logicalWidth - padding - (padding + heroWidth + gap);
 
-            const itemWidth = (canvas.width - (padding * 2) - (gap * (cols - 1))) / cols;
-            const itemHeight = itemWidth * 0.462;
+            const itemWidth = (subAreaWidth - (gap * (cols - 1))) / cols;
+            const itemHeight = itemWidth * ASPECT_RATIO;
 
             const rows = Math.ceil(subGames.length / cols);
-            canvas.height = startY + (rows * (itemHeight + gap)) + padding - gap;
+            const subAreaHeight = (rows * (itemHeight + gap)) - gap;
+            
+            const logicalHeight = headerHeight + Math.max(heroHeight, subAreaHeight) + (padding * 2);
 
-            ctx.fillStyle = "#0a0f14";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            setupCanvas(logicalWidth, logicalHeight);
+            drawHeader(logicalWidth);
 
-            drawCard(topGame, padding, padding, heroWidth, heroHeight);
+            drawCard(topGame, padding, padding + headerHeight, heroWidth, heroHeight, 1);
 
             subGames.forEach((game, index) => {
                 const col = index % cols;
                 const row = Math.floor(index / cols);
 
-                const x = padding + col * (itemWidth + gap);
+                const x = (padding + heroWidth + gap) + col * (itemWidth + gap);
                 const y = startY + row * (itemHeight + gap);
 
-                drawCard(game, x, y, itemWidth, itemHeight);
+                drawCard(game, x, y, itemWidth, itemHeight, index + 2);
             });
         }
 
@@ -399,7 +540,7 @@
             loadedGames = await loadGameImages(filtered);
             
             const style = document.getElementById('style-select').value;
-            statusEl.textContent = "Dibujando póster...";
+            statusEl.textContent = "Dibujando póster HD...";
 
             setTimeout(() => {
                 if (style === 'proportional') renderProportional(loadedGames);
@@ -441,6 +582,20 @@
                         return;
                     }
 
+                    // Extraer y Cargar Información del Perfil
+                    const player = data.player || {};
+                    const avatarUrl = player.avatarfull || player.avatarmedium || player.avatar;
+                    const avatarImg = await loadAvatarImage(avatarUrl);
+
+                    const totalMinutes = rawUserGames.reduce((sum, g) => sum + (g.playtime_forever || 0), 0);
+
+                    userProfile = {
+                        name: player.personaname || userInput,
+                        avatarImg: avatarImg,
+                        totalGames: rawUserGames.length,
+                        totalHours: Math.round(totalMinutes / 60)
+                    };
+
                     await processAndRender();
                 } else {
                     statusEl.textContent = "El perfil o la lista de juegos son PRIVADOS.";
@@ -454,7 +609,7 @@
         document.getElementById('btn-download').addEventListener('click', () => {
             const link = document.createElement('a');
             link.download = 'steam-library-poster.png';
-            link.href = canvas.toDataURL();
+            link.href = canvas.toDataURL('image/png');
             link.click();
         });
     </script>
