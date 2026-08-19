@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Steam Library Poster Showcase</title>
+
+    <!-- OPTIMIZACIÓN 1: Preconexiones de Red (DNS + TLS Handshake previo) -->
+    <link rel="preconnect" href="https://wsrv.nl" crossorigin>
+    <link rel="preconnect" href="https://shared.cloudflare.steamstatic.com" crossorigin>
+    <link rel="preconnect" href="https://steamproxy.ernestoygabo.workers.dev" crossorigin>
+
     <style>
         :root {
             --bg-color: #0e141b;
@@ -11,14 +17,19 @@
             --accent-color: #66c0f4;
             --accent-green: #10b981;
             --text-color: #f3f3f3;
+            --border-color: #2a475e;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
         }
 
         body {
-            margin: 0;
-            padding: 0;
             background-color: var(--bg-color);
             color: var(--text-color);
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
             display: flex;
             height: 100vh;
             overflow: hidden;
@@ -39,7 +50,6 @@
         h1 {
             font-size: 1.2rem;
             color: var(--accent-color);
-            margin-top: 0;
             text-transform: uppercase;
             letter-spacing: 1px;
         }
@@ -57,11 +67,12 @@
 
         input, select, button {
             background: #101822;
-            border: 1px solid #2a475e;
+            border: 1px solid var(--border-color);
             color: #fff;
             padding: 10px;
             border-radius: 4px;
             font-size: 0.9rem;
+            width: 100%;
         }
 
         input:focus, select:focus {
@@ -75,17 +86,17 @@
             color: white;
             font-weight: bold;
             cursor: pointer;
-            transition: transform 0.1s, opacity 0.2s;
+            transition: opacity 0.2s, transform 0.1s;
             margin-top: 5px;
         }
 
         button:hover { opacity: 0.9; }
         button:active { transform: scale(0.98); }
-        .btn-secondary { background: #2a475e; }
+        .btn-secondary { background: var(--border-color); }
 
         .notice-box {
             background-color: rgba(102, 192, 244, 0.08);
-            border: 1px solid #2a475e;
+            border: 1px solid var(--border-color);
             border-left: 3px solid var(--accent-color);
             padding: 10px;
             border-radius: 4px;
@@ -116,7 +127,7 @@
 
         #status {
             font-size: 0.8rem;
-            color: #66c0f4;
+            color: var(--accent-color);
             min-height: 20px;
             line-height: 1.4;
         }
@@ -152,10 +163,10 @@
             </select>
         </div>
 
-        <hr style="border: 0.5px solid #2a475e; width: 100%;">
+        <hr style="border: 0.5px solid var(--border-color); width: 100%;">
 
         <div class="notice-box">
-            <strong>Requisito de Privacidad:</strong> El perfil de Steam y la opción <em>"Detalles de los juegos"</em> deben estar configurados como <strong>Públicos</strong>.
+            <strong>Requisito de Privacidad:</strong> El perfil de Steam y <em>"Detalles de los juegos"</em> deben ser <strong>Públicos</strong>.
         </div>
 
         <div class="control-group">
@@ -195,18 +206,16 @@
             return input;
         }
 
+        // OPTIMIZACIÓN 2: Conversión dinámica a formato .webp comprimido
         function getCorsImageUrl(appid) {
             const rawUrl = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`;
-            return `https://wsrv.nl/?url=${encodeURIComponent(rawUrl)}&output=jpg`;
+            return `https://wsrv.nl/?url=${encodeURIComponent(rawUrl)}&output=webp&q=80`;
         }
 
         function formatPlaytime(minutes) {
             if (!minutes || minutes <= 0) return '0 hrs';
             const hours = Math.round(minutes / 60);
-            if (hours >= 1000) {
-                return (hours / 1000).toFixed(1) + 'k hrs';
-            }
-            return hours.toLocaleString() + ' hrs';
+            return hours >= 1000 ? (hours / 1000).toFixed(1) + 'k hrs' : hours.toLocaleString() + ' hrs';
         }
 
         function getOptimalWidth(count) {
@@ -216,8 +225,7 @@
             if (count <= 100) return 1800;
             if (count <= 250) return 2200;
             if (count <= 500) return 2600;
-            if (count <= 1000) return 3000;
-            return 3400;
+            return 3000;
         }
 
         function getOptimalColumns(count) {
@@ -228,8 +236,7 @@
             if (count <= 100) return 10;
             if (count <= 250) return 14;
             if (count <= 500) return 20;
-            if (count <= 1000) return 28;
-            return Math.min(36, Math.round(Math.sqrt(count * 0.75)));
+            return Math.min(32, Math.round(Math.sqrt(count * 0.75)));
         }
 
         function setupCanvas(width, height) {
@@ -248,11 +255,9 @@
 
         async function loadAvatarImage(url) {
             if (!url) return null;
-            
             const sources = [
-                url,
-                `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=jpg`,
-                `https://images.weserv.nl/?url=${encodeURIComponent(url)}`
+                `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=webp&q=80`,
+                url
             ];
 
             for (let src of sources) {
@@ -271,16 +276,14 @@
         }
 
         async function loadGameImages(games) {
-            statusEl.textContent = `Cargando portadas de ${games.length} juegos...`;
+            statusEl.textContent = `Descargando imágenes optimizadas (${games.length})...`;
             
             const imagePromises = games.map((game) => {
                 return new Promise((resolve) => {
                     const img = new Image();
                     img.crossOrigin = "anonymous";
-
                     img.onload = () => resolve({ ...game, img });
                     img.onerror = () => resolve({ ...game, img: null });
-                    
                     img.src = getCorsImageUrl(game.appid);
                 });
             });
@@ -292,8 +295,8 @@
             if (!userProfile) return 0;
 
             const padding = 35;
-            const avatarSize = Math.max(90, Math.round(logicalWidth * 0.055));
-            const headerHeight = avatarSize + 30;
+            const avatarSize = Math.max(80, Math.round(logicalWidth * 0.05));
+            const headerHeight = avatarSize + 25;
 
             const avatarX = padding;
             const avatarY = padding;
@@ -307,18 +310,13 @@
             if (userProfile.avatarImg && userProfile.avatarImg.naturalWidth > 0) {
                 ctx.drawImage(userProfile.avatarImg, avatarX, avatarY, avatarSize, avatarSize);
             } else {
-                const grad = ctx.createLinearGradient(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize);
-                grad.addColorStop(0, "#2a475e");
-                grad.addColorStop(1, "#1b2838");
-                ctx.fillStyle = grad;
+                ctx.fillStyle = "#1b2838";
                 ctx.fillRect(avatarX, avatarY, avatarSize, avatarSize);
-
                 ctx.fillStyle = "#66c0f4";
-                ctx.font = `bold ${Math.round(avatarSize * 0.45)}px 'Segoe UI', sans-serif`;
+                ctx.font = `bold ${Math.round(avatarSize * 0.4)}px sans-serif`;
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
-                const initial = (userProfile.name || "S").charAt(0).toUpperCase();
-                ctx.fillText(initial, avatarX + avatarSize / 2, avatarY + avatarSize / 2);
+                ctx.fillText((userProfile.name || "S").charAt(0).toUpperCase(), avatarX + avatarSize / 2, avatarY + avatarSize / 2);
             }
             ctx.restore();
 
@@ -326,33 +324,30 @@
             ctx.beginPath();
             ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
             ctx.strokeStyle = "#66c0f4";
-            ctx.lineWidth = Math.max(2, Math.round(avatarSize * 0.04));
+            ctx.lineWidth = Math.max(2, Math.round(avatarSize * 0.03));
             ctx.stroke();
             ctx.restore();
 
             const textX = avatarX + avatarSize + Math.round(avatarSize * 0.25);
-            const titleFontSize = Math.max(24, Math.round(avatarSize * 0.38));
-            const statsFontSize = Math.max(14, Math.round(avatarSize * 0.2));
-
             ctx.fillStyle = "#ffffff";
-            ctx.font = `bold ${titleFontSize}px 'Segoe UI', sans-serif`;
+            ctx.font = `bold ${Math.max(22, Math.round(avatarSize * 0.35))}px sans-serif`;
             ctx.textAlign = "left";
             ctx.textBaseline = "top";
             ctx.fillText(userProfile.name, textX, avatarY + Math.round(avatarSize * 0.1));
 
             ctx.fillStyle = "#acb2b8";
-            ctx.font = `${statsFontSize}px 'Segoe UI', sans-serif`;
-            const statsText = `${userProfile.totalGames} juegos • ${userProfile.totalHours.toLocaleString()} horas jugadas en total`;
+            ctx.font = `${Math.max(13, Math.round(avatarSize * 0.18))}px sans-serif`;
+            const statsText = `${userProfile.totalGames} juegos • ${userProfile.totalHours.toLocaleString()} horas en total`;
             ctx.fillText(statsText, textX, avatarY + Math.round(avatarSize * 0.55));
 
             ctx.strokeStyle = "#2a475e";
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth = 1;
             ctx.beginPath();
-            ctx.moveTo(padding, avatarY + headerHeight - 10);
-            ctx.lineTo(logicalWidth - padding, avatarY + headerHeight - 10);
+            ctx.moveTo(padding, avatarY + headerHeight - 5);
+            ctx.lineTo(logicalWidth - padding, avatarY + headerHeight - 5);
             ctx.stroke();
 
-            return headerHeight + 15;
+            return headerHeight + 10;
         }
 
         function drawCard(game, x, y, w, h, rank = 0, totalCount = 25) {
@@ -361,21 +356,18 @@
             const radius = Math.min(8, w * 0.06);
 
             if (rank > 0 && rank <= 3 && totalCount <= 100) {
-                ctx.shadowColor = 'rgba(102, 192, 244, 0.45)';
-                ctx.shadowBlur = 18;
-                ctx.shadowOffsetY = 4;
+                ctx.shadowColor = 'rgba(102, 192, 244, 0.4)';
+                ctx.shadowBlur = 14;
+                ctx.shadowOffsetY = 3;
             } else {
                 ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-                ctx.shadowBlur = 6;
+                ctx.shadowBlur = 5;
                 ctx.shadowOffsetY = 2;
             }
 
             ctx.beginPath();
-            if (ctx.roundRect) {
-                ctx.roundRect(x, y, w, h, radius);
-            } else {
-                ctx.rect(x, y, w, h);
-            }
+            if (ctx.roundRect) ctx.roundRect(x, y, w, h, radius);
+            else ctx.rect(x, y, w, h);
             ctx.fillStyle = "#1b2838";
             ctx.fill();
 
@@ -386,7 +378,7 @@
                 ctx.drawImage(game.img, x, y, w, h);
             } else {
                 ctx.fillStyle = "#66c0f4";
-                ctx.font = `bold ${Math.max(8, w * 0.09)}px Segoe UI, sans-serif`;
+                ctx.font = `bold ${Math.max(8, w * 0.09)}px sans-serif`;
                 ctx.fillText(game.name || `App ${game.appid}`, x + 4, y + h / 2);
             }
 
@@ -399,13 +391,12 @@
                 ctx.fillStyle = grad;
                 ctx.fillRect(x, y + h - gradHeight, w, gradHeight);
 
-                const hoursText = formatPlaytime(game.playtime_forever);
                 const fontSize = Math.max(8, Math.min(12, w * 0.085));
                 ctx.fillStyle = "#f3f3f3";
-                ctx.font = `600 ${fontSize}px Segoe UI, sans-serif`;
+                ctx.font = `600 ${fontSize}px sans-serif`;
                 ctx.textAlign = "right";
                 ctx.textBaseline = "bottom";
-                ctx.fillText(hoursText, x + w - (w * 0.05), y + h - (h * 0.04));
+                ctx.fillText(formatPlaytime(game.playtime_forever), x + w - (w * 0.05), y + h - (h * 0.04));
             }
 
             ctx.restore();
@@ -426,7 +417,7 @@
 
             const padding = 35;
             const gap = 12;
-            const headerHeight = userProfile ? Math.max(120, Math.round(logicalWidth * 0.08)) : 0;
+            const headerHeight = userProfile ? Math.max(100, Math.round(logicalWidth * 0.07)) : 0;
             const maxWidth = logicalWidth - (padding * 2);
 
             const maxPlaytime = games[0].playtime_forever || 1;
@@ -436,11 +427,7 @@
             const logMin = Math.log10(minPlaytime + 1);
             const logDiff = logMax - logMin || 1;
 
-            let maxCardWidth;
-            if (count <= 5) maxCardWidth = maxWidth * 0.32;
-            else if (count <= 15) maxCardWidth = maxWidth * 0.22;
-            else if (count <= 50) maxCardWidth = maxWidth * 0.15;
-            else maxCardWidth = (maxWidth / cols) * 1.25;
+            let maxCardWidth = (maxWidth / cols) * 1.25;
 
             let x = padding;
             let y = padding + headerHeight;
@@ -467,8 +454,7 @@
                 if (h > rowMaxHeight) rowMaxHeight = h;
             });
 
-            const logicalHeight = y + rowMaxHeight + padding;
-            setupCanvas(logicalWidth, logicalHeight);
+            setupCanvas(logicalWidth, y + rowMaxHeight + padding);
             drawHeader(logicalWidth);
 
             itemsToDraw.forEach(item => {
@@ -485,15 +471,14 @@
 
             const padding = 35;
             const gap = 12;
-            const headerHeight = userProfile ? Math.max(120, Math.round(logicalWidth * 0.08)) : 0;
+            const headerHeight = userProfile ? Math.max(100, Math.round(logicalWidth * 0.07)) : 0;
 
             const itemWidth = (logicalWidth - (padding * 2) - (gap * (cols - 1))) / cols;
             const itemHeight = itemWidth * ASPECT_RATIO;
 
             const rows = Math.ceil(games.length / cols);
-            const logicalHeight = headerHeight + (padding * 2) + (rows * (itemHeight + gap)) - gap;
 
-            setupCanvas(logicalWidth, logicalHeight);
+            setupCanvas(logicalWidth, headerHeight + (padding * 2) + (rows * (itemHeight + gap)) - gap);
             drawHeader(logicalWidth);
 
             games.forEach((game, index) => {
@@ -515,17 +500,16 @@
 
             const padding = 35;
             const gap = 12;
-            const headerHeight = userProfile ? Math.max(120, Math.round(logicalWidth * 0.08)) : 0;
+            const headerHeight = userProfile ? Math.max(100, Math.round(logicalWidth * 0.07)) : 0;
 
             const topGame = games[0];
-            const heroWidth = Math.min(420, (logicalWidth - (padding * 2) - gap) * 0.38);
+            const heroWidth = Math.min(400, (logicalWidth - (padding * 2) - gap) * 0.36);
             const heroHeight = heroWidth * ASPECT_RATIO;
 
             const subGames = games.slice(1);
 
             if (subGames.length === 0) {
-                const logicalHeight = headerHeight + (padding * 2) + heroHeight;
-                setupCanvas(logicalWidth, logicalHeight);
+                setupCanvas(logicalWidth, headerHeight + (padding * 2) + heroHeight);
                 drawHeader(logicalWidth);
                 drawCard(topGame, padding, padding + headerHeight, heroWidth, heroHeight, 1, count);
                 return;
@@ -535,16 +519,13 @@
             const cols = Math.max(2, getOptimalColumns(subGames.length) - 2);
 
             const startY = padding + headerHeight;
-
             const itemWidth = (subAreaWidth - (gap * (cols - 1))) / cols;
             const itemHeight = itemWidth * ASPECT_RATIO;
 
             const rows = Math.ceil(subGames.length / cols);
             const subAreaHeight = (rows * (itemHeight + gap)) - gap;
-            
-            const logicalHeight = headerHeight + Math.max(heroHeight, subAreaHeight) + (padding * 2);
 
-            setupCanvas(logicalWidth, logicalHeight);
+            setupCanvas(logicalWidth, headerHeight + Math.max(heroHeight, subAreaHeight) + (padding * 2));
             drawHeader(logicalWidth);
 
             drawCard(topGame, padding, padding + headerHeight, heroWidth, heroHeight, 1, count);
@@ -574,14 +555,14 @@
             loadedGames = await loadGameImages(filtered);
             
             const style = document.getElementById('style-select').value;
-            statusEl.textContent = "Dibujando póster HD...";
+            statusEl.textContent = "Renderizando póster...";
 
             setTimeout(() => {
                 if (style === 'proportional') renderProportional(loadedGames);
                 else if (style === 'grid') renderGrid(loadedGames);
                 else if (style === 'hero') renderHero(loadedGames);
-                statusEl.innerHTML = `¡Póster renderizado con ${loadedGames.length} juegos!`;
-            }, 50);
+                statusEl.innerHTML = `¡Mural listo (${loadedGames.length} juegos)!`;
+            }, 30);
         }
 
         document.getElementById('style-select').addEventListener('change', processAndRender);
@@ -595,7 +576,7 @@
                 return;
             }
 
-            statusEl.textContent = "Consultando perfil mediante Cloudflare Worker...";
+            statusEl.textContent = "Consultando perfil con Cloudflare Worker...";
 
             try {
                 const response = await fetch(`${WORKER_URL}?user=${encodeURIComponent(userInput)}`);
@@ -635,13 +616,13 @@
                 }
             } catch (err) {
                 console.error(err);
-                statusEl.textContent = "Error al conectar con el servidor proxy de Cloudflare.";
+                statusEl.textContent = "Error al conectar con el proxy.";
             }
         });
 
         document.getElementById('btn-download').addEventListener('click', () => {
             const link = document.createElement('a');
-            link.download = 'steam-library-poster.png';
+            link.download = `steam-poster-${Date.now()}.png`;
             link.href = canvas.toDataURL('image/png');
             link.click();
         });
