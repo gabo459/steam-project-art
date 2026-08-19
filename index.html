@@ -186,6 +186,15 @@
 
         const ASPECT_RATIO = 1.5;
 
+        function parseSteamName(input) {
+            if (!input) return "Usuario de Steam";
+            if (input.includes("steamcommunity.com")) {
+                const parts = input.replace(/\/$/, "").split("/");
+                return parts[parts.length - 1] || "Usuario de Steam";
+            }
+            return input;
+        }
+
         function getCorsImageUrl(appid) {
             const rawUrl = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`;
             return `https://wsrv.nl/?url=${encodeURIComponent(rawUrl)}&output=jpg`;
@@ -220,7 +229,13 @@
                 const img = new Image();
                 img.crossOrigin = "anonymous";
                 img.onload = () => resolve(img);
-                img.onerror = () => resolve(null);
+                img.onerror = () => {
+                    const fallbackImg = new Image();
+                    fallbackImg.crossOrigin = "anonymous";
+                    fallbackImg.onload = () => resolve(fallbackImg);
+                    fallbackImg.onerror = () => resolve(null);
+                    fallbackImg.src = url;
+                };
                 img.src = `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=jpg`;
             });
         }
@@ -253,7 +268,6 @@
             const avatarX = padding;
             const avatarY = padding;
 
-            // Dibujar Avatar Circular
             ctx.save();
             ctx.beginPath();
             ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
@@ -265,10 +279,14 @@
             } else {
                 ctx.fillStyle = "#1b2838";
                 ctx.fillRect(avatarX, avatarY, avatarSize, avatarSize);
+                ctx.fillStyle = "#66c0f4";
+                ctx.font = "bold 24px 'Segoe UI', sans-serif";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(userProfile.name.charAt(0).toUpperCase(), avatarX + avatarSize / 2, avatarY + avatarSize / 2);
             }
             ctx.restore();
 
-            // Anillo de Borde para el Avatar
             ctx.save();
             ctx.beginPath();
             ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
@@ -277,11 +295,11 @@
             ctx.stroke();
             ctx.restore();
 
-            // Textos del Perfil
             const textX = avatarX + avatarSize + 20;
 
             ctx.fillStyle = "#ffffff";
             ctx.font = "bold 28px 'Segoe UI', sans-serif";
+            ctx.textAlign = "left";
             ctx.textBaseline = "top";
             ctx.fillText(userProfile.name, textX, avatarY + 8);
 
@@ -290,7 +308,6 @@
             const statsText = `${userProfile.totalGames} juegos • ${userProfile.totalHours.toLocaleString()} horas jugadas en total`;
             ctx.fillText(statsText, textX, avatarY + 44);
 
-            // Línea Divisoria Decorativa
             ctx.strokeStyle = "#2a475e";
             ctx.lineWidth = 1;
             ctx.beginPath();
@@ -301,19 +318,19 @@
             return headerHeight + 15;
         }
 
-        function drawCard(game, x, y, w, h, rank = 0) {
+        function drawCard(game, x, y, w, h, rank = 0, totalCount = 25) {
             ctx.save();
 
             const radius = Math.min(8, w * 0.06);
 
-            if (rank > 0 && rank <= 3) {
+            if (rank > 0 && rank <= 3 && totalCount <= 100) {
                 ctx.shadowColor = 'rgba(102, 192, 244, 0.45)';
                 ctx.shadowBlur = 18;
                 ctx.shadowOffsetY = 4;
             } else {
-                ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-                ctx.shadowBlur = 10;
-                ctx.shadowOffsetY = 3;
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+                ctx.shadowBlur = 8;
+                ctx.shadowOffsetY = 2;
             }
 
             ctx.beginPath();
@@ -332,59 +349,49 @@
                 ctx.drawImage(game.img, x, y, w, h);
             } else {
                 ctx.fillStyle = "#66c0f4";
-                ctx.font = `bold ${Math.max(10, w * 0.09)}px Segoe UI, sans-serif`;
-                ctx.fillText(game.name || `App ${game.appid}`, x + 8, y + h / 2);
+                ctx.font = `bold ${Math.max(9, w * 0.09)}px Segoe UI, sans-serif`;
+                ctx.fillText(game.name || `App ${game.appid}`, x + 5, y + h / 2);
             }
 
-            const gradHeight = Math.max(35, h * 0.28);
-            const grad = ctx.createLinearGradient(x, y + h - gradHeight, x, y + h);
-            grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-            grad.addColorStop(1, 'rgba(0, 0, 0, 0.88)');
+            if (w >= 50) {
+                const gradHeight = Math.max(25, h * 0.28);
+                const grad = ctx.createLinearGradient(x, y + h - gradHeight, x, y + h);
+                grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+                grad.addColorStop(1, 'rgba(0, 0, 0, 0.9)');
 
-            ctx.fillStyle = grad;
-            ctx.fillRect(x, y + h - gradHeight, w, gradHeight);
+                ctx.fillStyle = grad;
+                ctx.fillRect(x, y + h - gradHeight, w, gradHeight);
 
-            const hoursText = formatPlaytime(game.playtime_forever);
-            const fontSize = Math.max(9, Math.min(13, w * 0.085));
-            ctx.fillStyle = "#f3f3f3";
-            ctx.font = `600 ${fontSize}px Segoe UI, sans-serif`;
-            ctx.textAlign = "right";
-            ctx.textBaseline = "bottom";
-            ctx.fillText(hoursText, x + w - (w * 0.06), y + h - (h * 0.04));
+                const hoursText = formatPlaytime(game.playtime_forever);
+                const fontSize = Math.max(8, Math.min(12, w * 0.085));
+                ctx.fillStyle = "#f3f3f3";
+                ctx.font = `600 ${fontSize}px Segoe UI, sans-serif`;
+                ctx.textAlign = "right";
+                ctx.textBaseline = "bottom";
+                ctx.fillText(hoursText, x + w - (w * 0.05), y + h - (h * 0.04));
+            }
 
             ctx.restore();
 
-            ctx.strokeStyle = (rank > 0 && rank <= 3) ? "rgba(102, 192, 244, 0.9)" : "rgba(42, 71, 94, 0.8)";
-            ctx.lineWidth = (rank > 0 && rank <= 3) ? 2 : 1.2;
+            ctx.strokeStyle = (rank > 0 && rank <= 3 && totalCount <= 100) ? "rgba(102, 192, 244, 0.9)" : "rgba(42, 71, 94, 0.8)";
+            ctx.lineWidth = (rank > 0 && rank <= 3 && totalCount <= 100) ? 2 : 1;
             ctx.stroke();
 
             ctx.restore();
-        }
-
-        function getDynamicColumns(count) {
-            if (count <= 5) return 3;
-            if (count <= 10) return 4;
-            if (count <= 25) return 5;
-            if (count <= 50) return 7;
-            if (count <= 100) return 9;
-            if (count <= 250) return 12;
-            if (count <= 500) return 15;
-            return 18;
         }
 
         function renderProportional(games) {
             if (games.length === 0) return;
 
             const count = games.length;
-            let logicalWidth;
+            let logicalWidth = 1400;
             
-            if (count <= 5) logicalWidth = 1000;
-            else if (count <= 15) logicalWidth = 1200;
-            else if (count <= 50) logicalWidth = 1500;
-            else logicalWidth = 1800;
+            if (count <= 10) logicalWidth = 1000;
+            else if (count <= 25) logicalWidth = 1200;
+            else if (count >= 100) logicalWidth = 1800;
 
             const padding = 35;
-            const gap = 14;
+            const gap = 12;
             const headerHeight = userProfile ? 120 : 0;
             const maxWidth = logicalWidth - (padding * 2);
 
@@ -397,9 +404,9 @@
 
             let maxCardWidth;
             if (count <= 5) maxCardWidth = maxWidth * 0.32;
-            else if (count <= 15) maxCardWidth = maxWidth * 0.24;
-            else if (count <= 30) maxCardWidth = maxWidth * 0.18;
-            else maxCardWidth = maxWidth * 0.14;
+            else if (count <= 15) maxCardWidth = maxWidth * 0.22;
+            else if (count <= 50) maxCardWidth = maxWidth * 0.15;
+            else maxCardWidth = maxWidth * 0.11;
 
             let x = padding;
             let y = padding + headerHeight;
@@ -409,9 +416,9 @@
             games.forEach((game, index) => {
                 const currentLog = Math.log10((game.playtime_forever || 1) + 1);
                 const normalizedRatio = (currentLog - logMin) / logDiff;
-                const scaleFactor = 0.5 + (0.5 * normalizedRatio);
+                const scaleFactor = 0.55 + (0.45 * normalizedRatio);
 
-                let w = Math.max(75, Math.min(maxWidth, maxCardWidth * scaleFactor));
+                let w = Math.max(80, Math.min(maxWidth, maxCardWidth * scaleFactor));
                 let h = w * ASPECT_RATIO;
 
                 if (x + w > logicalWidth - padding + 2) {
@@ -431,7 +438,7 @@
             drawHeader(logicalWidth);
 
             itemsToDraw.forEach(item => {
-                drawCard(item.game, item.x, item.y, item.w, item.h, item.rank);
+                drawCard(item.game, item.x, item.y, item.w, item.h, item.rank, count);
             });
         }
 
@@ -439,17 +446,21 @@
             if (games.length === 0) return;
 
             const count = games.length;
-            const cols = getDynamicColumns(count);
-            
-            let logicalWidth;
+            let logicalWidth = 1400;
             if (count <= 10) logicalWidth = 1000;
             else if (count <= 25) logicalWidth = 1200;
-            else if (count <= 100) logicalWidth = 1600;
-            else logicalWidth = 2000;
+            else if (count >= 100) logicalWidth = 1800;
 
             const padding = 35;
-            const gap = 14;
+            const gap = 12;
             const headerHeight = userProfile ? 120 : 0;
+
+            let targetCardWidth = 130;
+            if (count > 100) targetCardWidth = 105;
+            if (count > 300) targetCardWidth = 90;
+
+            let cols = Math.floor((logicalWidth - (padding * 2) + gap) / (targetCardWidth + gap));
+            cols = Math.max(3, Math.min(cols, 16));
 
             const itemWidth = (logicalWidth - (padding * 2) - (gap * (cols - 1))) / cols;
             const itemHeight = itemWidth * ASPECT_RATIO;
@@ -467,7 +478,7 @@
                 const x = padding + col * (itemWidth + gap);
                 const y = padding + headerHeight + row * (itemHeight + gap);
 
-                drawCard(game, x, y, itemWidth, itemHeight, index + 1);
+                drawCard(game, x, y, itemWidth, itemHeight, index + 1, count);
             });
         }
 
@@ -475,17 +486,17 @@
             if (games.length === 0) return;
 
             const count = games.length;
-            let logicalWidth;
+            let logicalWidth = 1400;
             if (count <= 10) logicalWidth = 1000;
             else if (count <= 25) logicalWidth = 1200;
-            else logicalWidth = 1600;
+            else if (count >= 100) logicalWidth = 1800;
 
             const padding = 35;
-            const gap = 14;
+            const gap = 12;
             const headerHeight = userProfile ? 120 : 0;
 
             const topGame = games[0];
-            const heroWidth = (logicalWidth - (padding * 2) - gap) * 0.42;
+            const heroWidth = Math.min(420, (logicalWidth - (padding * 2) - gap) * 0.38);
             const heroHeight = heroWidth * ASPECT_RATIO;
 
             const subGames = games.slice(1);
@@ -494,13 +505,18 @@
                 const logicalHeight = headerHeight + (padding * 2) + heroHeight;
                 setupCanvas(logicalWidth, logicalHeight);
                 drawHeader(logicalWidth);
-                drawCard(topGame, padding, padding + headerHeight, heroWidth, heroHeight, 1);
+                drawCard(topGame, padding, padding + headerHeight, heroWidth, heroHeight, 1, count);
                 return;
             }
 
-            const cols = getDynamicColumns(subGames.length);
-            const startY = padding + headerHeight;
             const subAreaWidth = logicalWidth - padding - (padding + heroWidth + gap);
+            let targetCardWidth = 120;
+            if (count > 100) targetCardWidth = 95;
+
+            let cols = Math.floor((subAreaWidth + gap) / (targetCardWidth + gap));
+            cols = Math.max(2, Math.min(cols, 12));
+
+            const startY = padding + headerHeight;
 
             const itemWidth = (subAreaWidth - (gap * (cols - 1))) / cols;
             const itemHeight = itemWidth * ASPECT_RATIO;
@@ -513,7 +529,7 @@
             setupCanvas(logicalWidth, logicalHeight);
             drawHeader(logicalWidth);
 
-            drawCard(topGame, padding, padding + headerHeight, heroWidth, heroHeight, 1);
+            drawCard(topGame, padding, padding + headerHeight, heroWidth, heroHeight, 1, count);
 
             subGames.forEach((game, index) => {
                 const col = index % cols;
@@ -522,7 +538,7 @@
                 const x = (padding + heroWidth + gap) + col * (itemWidth + gap);
                 const y = startY + row * (itemHeight + gap);
 
-                drawCard(game, x, y, itemWidth, itemHeight, index + 2);
+                drawCard(game, x, y, itemWidth, itemHeight, index + 2, count);
             });
         }
 
@@ -582,15 +598,14 @@
                         return;
                     }
 
-                    // Extraer y Cargar Información del Perfil
-                    const player = data.player || {};
+                    const player = data.player || (data.response && data.response.players ? data.response.players[0] : {}) || {};
                     const avatarUrl = player.avatarfull || player.avatarmedium || player.avatar;
                     const avatarImg = await loadAvatarImage(avatarUrl);
 
                     const totalMinutes = rawUserGames.reduce((sum, g) => sum + (g.playtime_forever || 0), 0);
 
                     userProfile = {
-                        name: player.personaname || userInput,
+                        name: player.personaname || parseSteamName(userInput),
                         avatarImg: avatarImg,
                         totalGames: rawUserGames.length,
                         totalHours: Math.round(totalMinutes / 60)
