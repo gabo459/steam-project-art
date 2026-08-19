@@ -6,7 +6,7 @@
     <title>Steam Library Poster Showcase</title>
 
     <link rel="preconnect" href="https://wsrv.nl" crossorigin>
-    <link rel="preconnect" href="https://api.allorigins.win" crossorigin>
+    <link rel="preconnect" href="https://corsproxy.io" crossorigin>
     <link rel="preconnect" href="https://shared.cloudflare.steamstatic.com" crossorigin>
     <link rel="preconnect" href="https://steamproxy.ernestoygabo.workers.dev" crossorigin>
 
@@ -228,35 +228,43 @@
                 };
             }
 
-            try {
-                let steamUrl = userInput.trim();
-                if (!steamUrl.startsWith('http')) {
-                    if (/^\d{17}$/.test(userInput)) {
-                        steamUrl = `https://steamcommunity.com/profiles/${userInput}`;
-                    } else {
-                        steamUrl = `https://steamcommunity.com/id/${userInput}`;
-                    }
-                }
-                const xmlUrl = steamUrl.replace(/\/$/, "") + "/?xml=1";
-                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(xmlUrl)}`;
-                
-                const res = await fetch(proxyUrl);
-                const text = await res.text();
-                
-                const parser = new DOMParser();
-                const xmlDoc = parser.parseFromString(text, "text/xml");
-                
-                const avatarNode = xmlDoc.querySelector("avatarFull") || xmlDoc.querySelector("avatarIcon");
-                const nameNode = xmlDoc.querySelector("steamID");
+            let steamUrl = userInput.trim();
+            if (!steamUrl.startsWith('http')) {
+                steamUrl = /^\d{17}$/.test(userInput)
+                    ? `https://steamcommunity.com/profiles/${userInput}`
+                    : `https://steamcommunity.com/id/${userInput}`;
+            }
+            const xmlUrl = steamUrl.replace(/\/$/, "") + "/?xml=1";
 
-                if (avatarNode && avatarNode.textContent) {
-                    avatarUrl = avatarNode.textContent.trim();
+            const proxyGenerators = [
+                url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+                url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+                url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
+            ];
+
+            for (const getProxyUrl of proxyGenerators) {
+                try {
+                    const res = await fetch(getProxyUrl(xmlUrl));
+                    if (!res.ok) continue;
+                    const text = await res.text();
+
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(text, "text/xml");
+
+                    const avatarNode = xmlDoc.querySelector("avatarFull") || xmlDoc.querySelector("avatarIcon") || xmlDoc.querySelector("avatarMedium");
+                    const nameNode = xmlDoc.querySelector("steamID");
+
+                    if (avatarNode && avatarNode.textContent) {
+                        avatarUrl = avatarNode.textContent.trim();
+                    }
+                    if (nameNode && nameNode.textContent) {
+                        name = nameNode.textContent.trim();
+                    }
+
+                    if (avatarUrl) break;
+                } catch (e) {
+                    console.warn("Fallo un proxy obteniendo el XML del perfil:", e);
                 }
-                if (nameNode && nameNode.textContent) {
-                    name = nameNode.textContent.trim();
-                }
-            } catch (e) {
-                console.warn("No se pudo obtener el avatar desde el XML público:", e);
             }
 
             return { name, avatarUrl };
@@ -366,7 +374,7 @@
             if (!url) return null;
             const sources = [
                 `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=webp&q=85`,
-                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+                `https://corsproxy.io/?${encodeURIComponent(url)}`,
                 url
             ];
 
@@ -404,16 +412,30 @@
             if (userProfile.avatarImg && userProfile.avatarImg.naturalWidth > 0) {
                 ctx.drawImage(userProfile.avatarImg, avatarX, avatarY, avatarSize, avatarSize);
             } else {
-                ctx.fillStyle = "#1b2838";
+                // Dibujar icono vectorial de respaldo cuando la foto no carga
+                const grad = ctx.createLinearGradient(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize);
+                grad.addColorStop(0, "#2a475e");
+                grad.addColorStop(1, "#101822");
+                ctx.fillStyle = grad;
                 ctx.fillRect(avatarX, avatarY, avatarSize, avatarSize);
+
                 ctx.fillStyle = "#66c0f4";
-                ctx.font = `bold ${Math.round(avatarSize * 0.4)}px sans-serif`;
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-                ctx.fillText((userProfile.name || "S").charAt(0).toUpperCase(), avatarX + avatarSize / 2, avatarY + avatarSize / 2);
+                const cx = avatarX + avatarSize / 2;
+                const cy = avatarY + avatarSize / 2;
+                
+                // Cabeza
+                ctx.beginPath();
+                ctx.arc(cx, cy - avatarSize * 0.1, avatarSize * 0.22, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Hombros
+                ctx.beginPath();
+                ctx.arc(cx, cy + avatarSize * 0.45, avatarSize * 0.35, Math.PI, 0);
+                ctx.fill();
             }
             ctx.restore();
 
+            // Anillo exterior
             ctx.save();
             ctx.beginPath();
             ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
@@ -695,7 +717,7 @@
                         return;
                     }
 
-                    statusEl.textContent = "Obteniendo avatar del perfil de Steam...";
+                    statusEl.textContent = "Obteniendo datos del perfil...";
                     const profileInfo = await getSteamProfileInfo(userInput, data);
                     const avatarImg = await loadAvatarImage(profileInfo.avatarUrl);
 
