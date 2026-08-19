@@ -128,7 +128,7 @@
         <div class="control-group">
             <label for="style-select">Diseño del Mural:</label>
             <select id="style-select">
-                <option value="proportional">Mosaico Escala por Horas</option>
+                <option value="proportional">Escala Logarítmica Suave (Recomendado)</option>
                 <option value="hero">Top 1 Destacado + Galería</option>
                 <option value="grid">Mural Uniforme (Grid)</option>
             </select>
@@ -173,7 +173,7 @@
 
     <script>
         // PEGA AQUÍ LA URL DE TU CLOUDFLARE WORKER
-        const WORKER_URL = "https://steamproxy.ernestoygabo.workers.dev/";
+        const WORKER_URL = "https://steam-proxy.gabo459.workers.dev";
 
         const canvas = document.getElementById('art-canvas');
         const ctx = canvas.getContext('2d');
@@ -231,41 +231,53 @@
             return 16;
         }
 
+        // Diseño Logarítmico Suavizado para evadir valores atípicos (Outliers de miles de horas)
         function renderProportional(games) {
             if (games.length === 0) return;
 
             const count = games.length;
             
-            // Ajuste dinámico de ancho del lienzo según cantidad de juegos
             if (count <= 5) canvas.width = 1000;
             else if (count <= 15) canvas.width = 1200;
             else if (count <= 50) canvas.width = 1500;
             else canvas.width = 1800;
 
-            const maxPlaytime = games[0].playtime_forever || 1;
             const padding = 30;
             const gap = 12;
             const maxWidth = canvas.width - (padding * 2);
+
+            // Valores de horas máximo y mínimo para la normalización
+            const maxPlaytime = games[0].playtime_forever || 1;
+            const minPlaytime = games[games.length - 1].playtime_forever || 1;
+
+            const logMax = Math.log10(maxPlaytime + 1);
+            const logMin = Math.log10(minPlaytime + 1);
+            const logDiff = logMax - logMin || 1;
+
+            // Ancho máximo que puede tener la tarjeta #1
+            let maxCardWidth;
+            if (count <= 5) maxCardWidth = maxWidth * 0.48;
+            else if (count <= 15) maxCardWidth = maxWidth * 0.38;
+            else if (count <= 30) maxCardWidth = maxWidth * 0.28;
+            else maxCardWidth = maxWidth * 0.22;
 
             let x = padding;
             let y = padding;
             let rowMaxHeight = 0;
             const itemsToDraw = [];
 
-            // Escala base adaptativa
-            let baseCardWidth;
-            if (count <= 5) baseCardWidth = maxWidth * 0.48;
-            else if (count <= 10) baseCardWidth = maxWidth * 0.38;
-            else if (count <= 25) baseCardWidth = maxWidth * 0.30;
-            else if (count <= 100) baseCardWidth = maxWidth * 0.22;
-            else baseCardWidth = 320;
-
             games.forEach((game) => {
-                const ratio = Math.sqrt(game.playtime_forever / maxPlaytime);
-                let w = Math.max(70, Math.min(maxWidth, baseCardWidth * ratio));
+                // Normalización logarítmica acotada entre 0.45 y 1.0
+                const currentLog = Math.log10((game.playtime_forever || 1) + 1);
+                const normalizedRatio = (currentLog - logMin) / logDiff;
+                
+                // Ninguna tarjeta será menor al 45% del tamaño de la tarjeta más grande
+                const scaleFactor = 0.45 + (0.55 * normalizedRatio);
+
+                let w = Math.max(80, Math.min(maxWidth, maxCardWidth * scaleFactor));
                 let h = w * 0.462;
 
-                if (x + w > canvas.width - padding) {
+                if (x + w > canvas.width - padding + 2) {
                     x = padding;
                     y += rowMaxHeight + gap;
                     rowMaxHeight = 0;
@@ -277,7 +289,6 @@
                 if (h > rowMaxHeight) rowMaxHeight = h;
             });
 
-            // Altura exacta sin espacio sobrante
             canvas.height = y + rowMaxHeight + padding;
 
             ctx.fillStyle = "#0e141b";
